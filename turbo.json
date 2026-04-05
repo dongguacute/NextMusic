@@ -1,13 +1,14 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
   "tasks": {
     "build": {
       "dependsOn": [
         "^build"
       ],
       "outputs": [
-        "dist/**",
-        ".next/**"
+        ".output/**",
+        "dist/**"
       ]
     },
     "dev": {
@@ -26,6 +27,9 @@
       "outputs": [
         "coverage/**"
       ]
+    },
+    "clean": {
+      "cache": false
     }
   }
 }

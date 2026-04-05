@@ -1,0 +1,20 @@
+{
+  "name": "nextmusic",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "lint": "echo \"Lint is not configured yet\"",
+    "preview": "nuxt preview",
+    "test": "echo \"No tests yet\"",
+    "clean": "nuxt cleanup",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "nuxt": "^4.4.2",
+    "vue": "^3.5.31",
+    "vue-router": "^5.0.4"
+  }
+}

@@ -2,4 +2,8 @@ node_modules
 .turbo
 dist
 coverage
+.nuxt
+.output
+.cache
 .DS_Store
+.pnpm-store
