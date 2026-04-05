@@ -3,8 +3,11 @@ import { resolveMusicProject } from './engine/resolver'
 import { renderTrack, AudioEvent } from './engine/renderer'
 
 export * from './types/input'
+export * from './types/timbre'
+export * from './types/expression'
 export * from './engine/resolver'
 export * from './engine/renderer'
+export * from './engine/synth'
 export * from './utils'
 
 export interface RenderedProject {

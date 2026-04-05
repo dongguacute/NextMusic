@@ -1,4 +1,6 @@
-import { Track, MusicProject } from '../types/input'
+import { Note, MusicProject, NoteSchema } from '../types/input'
+import { TimbreParams } from '../types/timbre'
+import { Expression } from '../types/expression'
 import { degreeToMidi } from '../utils'
 
 export interface AudioEvent {
@@ -6,6 +8,30 @@ export interface AudioEvent {
   duration: number
   midi: number
   velocity: number
+  timbre?: TimbreParams
+  expression?: Expression
+}
+
+/**
+ * 实时渲染单个音符：模拟前端实时传入数据
+ */
+export function renderNote(note: Note, projectContext: { root: number, scale: string, timbre?: TimbreParams }): AudioEvent {
+  const midi = degreeToMidi(
+    note.degree,
+    note.octave,
+    projectContext.root,
+    projectContext.scale,
+    0
+  )
+
+  return {
+    time: note.start,
+    duration: note.duration,
+    midi: midi,
+    velocity: note.expression?.velocity ?? 0.8,
+    timbre: projectContext.timbre,
+    expression: note.expression
+  }
 }
 
 /**
@@ -28,7 +54,9 @@ export function renderTrack(track: Track, project: MusicProject): AudioEvent[] {
       time: note.start,
       duration: note.duration,
       midi: midi,
-      velocity: 0.8 // 默认力度，后续可从 NoteSchema 中获取
+      velocity: note.expression?.velocity ?? 0.8,
+      timbre: track.timbre,
+      expression: note.expression
     }
   })
 }

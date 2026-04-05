@@ -22,3 +22,10 @@ export function degreeToMidi(
   const base = intervals[adjustedDegree]
   return root + base + accidental + (octave + octaveOffset) * 12
 }
+
+/**
+ * 将 MIDI 编号转换为频率 (Hz)
+ */
+export function midiToFrequency(midi: number): number {
+  return 440 * Math.pow(2, (midi - 69) / 12)
+}

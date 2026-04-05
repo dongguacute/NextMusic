@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import { TimbreParamsSchema } from './timbre'
+import { ExpressionSchema } from './expression'
 
 // 音阶类型：音乐理论中的常见音阶
 type ScaleType = 'major' | 'minor' | 'pentatonic' | 'blues';
@@ -20,12 +22,14 @@ export const NoteSchema = z.object({
     degree: z.number().int().min(1).max(7),
     octave: z.number().int().min(-2).max(2),
     start: z.number().min(0),
-    duration: z.number().positive()
+    duration: z.number().positive(),
+    expression: ExpressionSchema.optional(),
 })
 export const TrackSchema = z.object({
     id: z.string().min(1),
     name: z.string().min(1),
     instrument: z.enum(['basic', 'piano', 'guitar', 'synth']),
+    timbre: TimbreParamsSchema.optional(),
     notes: z.array(NoteSchema),
 })
 export const SongSchema = z.object({
