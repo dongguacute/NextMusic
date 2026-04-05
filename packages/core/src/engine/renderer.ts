@@ -1,4 +1,4 @@
-import { Note, MusicProject, NoteSchema } from '../types/input'
+import { Note, MusicProject, NoteSchema, Track } from '../types/input'
 import { TimbreParams } from '../types/timbre'
 import { Expression } from '../types/expression'
 import { degreeToMidi } from '../utils'
