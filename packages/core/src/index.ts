@@ -1,1 +1,1 @@
-export const coreVersion = '1.0.0'
+export * from "./input/input";
