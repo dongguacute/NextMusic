@@ -40,6 +40,12 @@ importers:
         specifier: ^66.6.7
         version: 66.6.7(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(@unocss/webpack@66.6.7(webpack@5.105.4))(vite@7.3.1(@types/node@25.5.2)(jiti@2.6.1)(terser@5.46.1)(yaml@2.8.3))
 
+  packages/core:
+    devDependencies:
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.2
+
 packages:
 
   '@antfu/eslint-config@8.0.0':
