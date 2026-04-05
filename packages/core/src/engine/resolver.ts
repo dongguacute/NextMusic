@@ -18,15 +18,14 @@ export function resolveMusicProject(data: unknown) {
     }
 }
 
-export function resolveNote(data: unknown) {
+export function resolveNote(data: unknown, root: number = 60, scale: string = 'major') {
     try {
         const note = NoteSchema.parse(data)
-        // 假设这里需要一个默认的 root，或者从其他地方获取
-        const defaultRoot = 60 
         const midi = degreeToMidi(
             note.degree,
             note.octave,
-            defaultRoot,
+            root,
+            scale,
             0 // accidental 默认为 0
         )
         return {

@@ -15,11 +15,12 @@ export interface AudioEvent {
  * @returns 音频事件列表
  */
 export function renderTrack(track: Track, project: MusicProject): AudioEvent[] {
-  return track.notes.map(note => {
+    return track.notes.map(note => {
     const midi = degreeToMidi(
       note.degree,
       note.octave,
       project.key.root,
+      project.key.scale,
       0 // 目前默认 accidental 为 0
     )
 
