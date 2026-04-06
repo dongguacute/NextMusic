@@ -32,8 +32,35 @@ export const useMusicStore = defineStore('music', () => {
   const isPlaying = ref(false)
   const currentTime = ref(0)
   const startTime = ref(0)
+  const selectedTrackId = ref('track-1')
+  const selectedNoteIndices = ref<Record<string, Set<number>>>({})
   const playbackTimer = ref<any>(null)
   const playbackTimeout = ref<any>(null)
+
+  // 音轨状态：Mute/Solo
+  const trackStates = ref<Record<string, { mute: boolean, solo: boolean }>>({})
+
+  const toggleMute = (trackId: string) => {
+    if (!trackStates.value[trackId]) trackStates.value[trackId] = { mute: false, solo: false }
+    trackStates.value[trackId].mute = !trackStates.value[trackId].mute
+  }
+
+  const toggleSolo = (trackId: string) => {
+    if (!trackStates.value[trackId]) trackStates.value[trackId] = { mute: false, solo: false }
+    trackStates.value[trackId].solo = !trackStates.value[trackId].solo
+  }
+
+  const isTrackActive = (trackId: string) => {
+    const state = trackStates.value[trackId]
+    if (!state) return true
+    
+    // 如果有任何音轨处于 Solo 状态，只有 Solo 的音轨才发声
+    const hasSolo = Object.values(trackStates.value).some(s => s.solo)
+    if (hasSolo) return state.solo
+    
+    // 否则看是否 Mute
+    return !state.mute
+  }
 
   const addNote = (trackId: string, note: Note) => {
     const track = project.value.tracks.find(t => t.id === trackId)
@@ -94,6 +121,12 @@ export const useMusicStore = defineStore('music', () => {
     addNote,
     updateNote,
     removeNote,
+    selectedTrackId,
+    trackStates,
+    toggleMute,
+    toggleSolo,
+    isTrackActive,
+    selectedNoteIndices,
     startPlaybackTimer,
     stopPlaybackTimer
   }

@@ -25,7 +25,7 @@ export function renderNote(note: Note, projectContext: { root: number, scale: st
   )
 
   return {
-    time: note.start,
+    time: note.start + (note.expression?.timingOffset ?? 0),
     duration: note.duration,
     midi: midi,
     velocity: note.expression?.velocity ?? 0.8,
@@ -51,7 +51,7 @@ export function renderTrack(track: Track, project: MusicProject): AudioEvent[] {
     )
 
     return {
-      time: note.start,
+      time: note.start + (note.expression?.timingOffset ?? 0),
       duration: note.duration,
       midi: midi,
       velocity: note.expression?.velocity ?? 0.8,

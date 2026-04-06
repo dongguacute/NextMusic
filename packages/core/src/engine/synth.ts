@@ -35,9 +35,30 @@ export class SynthEngine {
    * @param time 当前时间（相对于音符开始）
    * @param duration 音符持续时间
    * @param params 音色参数
+   * @param expression 表达参数（包含演奏方式）
    */
-  static applyEnvelope(time: number, duration: number, params: TimbreParams): number {
-    const { attack, decay, sustain, release } = params.envelope
+  static applyEnvelope(time: number, duration: number, params: TimbreParams, expression?: Expression): number {
+    let { attack, decay, sustain, release } = params.envelope
+    const articulation = expression?.articulation || 'lead'
+
+    // 根据演奏方式调整包络
+    switch (articulation) {
+      case 'pad':
+        // Pad: 缓慢淡入，长释放
+        attack = Math.max(attack, 0.4)
+        release = Math.max(release, 0.8)
+        break
+      case 'pluck':
+        // Pluck: 极快触发，快速衰减到低 sustain 或直接消失
+        attack = Math.min(attack, 0.02)
+        decay = Math.min(decay, 0.2)
+        sustain = sustain * 0.3
+        break
+      case 'lead':
+      default:
+        // Lead: 标准触发，中等衰减
+        break
+    }
 
     // Attack
     if (time < attack) {

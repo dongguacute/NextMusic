@@ -104,8 +104,12 @@ export const useAudioEngine = () => {
     const now = audioCtx.value.currentTime
     musicStore.isPlaying = true
     musicStore.startTime = now
+    musicStore.isPlaying = true
 
     musicStore.project.tracks.forEach((track) => {
+      // 检查音轨是否激活 (Mute/Solo)
+      if (!musicStore.isTrackActive(track.id)) return
+
       track.notes.forEach((note) => {
         const startOffset = note.start * (60 / musicStore.project.tempo)
         const duration = note.duration * (60 / musicStore.project.tempo)
@@ -117,20 +121,32 @@ export const useAudioEngine = () => {
         const gainNode = audioCtx.value!.createGain()
         const timbre = track.timbre || { type: 'sine', envelope: { attack: 0.01, decay: 0.1, sustain: 0.5, release: 0.1 } }
         
+        const articulation = note.expression?.articulation || 'lead'
+        let { attack, decay, sustain, release } = timbre.envelope
+
+        // 演奏方式逻辑
+        if (articulation === 'pad') {
+          attack = Math.max(attack, 0.4)
+          release = Math.max(release, 0.8)
+        } else if (articulation === 'pluck') {
+          attack = Math.min(attack, 0.02)
+          decay = Math.min(decay, 0.2)
+          sustain = sustain * 0.3
+        }
+
         osc.type = (timbre.type === 'sine' || timbre.type === 'square' || timbre.type === 'sawtooth' || timbre.type === 'triangle') 
           ? timbre.type as OscillatorType 
           : 'sine'
         
-        osc.frequency.setValueAtTime(freq, now + startOffset)
+        osc.frequency.setValueAtTime(freq, now + startOffset + (note.expression?.timingOffset ?? 0))
         
-        const { attack, decay, sustain, release } = timbre.envelope
         const velocity = note.expression?.velocity || 0.8
 
-        gainNode.gain.setValueAtTime(0, now + startOffset)
-        gainNode.gain.linearRampToValueAtTime(velocity, now + startOffset + attack)
-        gainNode.gain.linearRampToValueAtTime(velocity * sustain, now + startOffset + attack + decay)
-        gainNode.gain.setValueAtTime(velocity * sustain, now + startOffset + duration)
-        gainNode.gain.linearRampToValueAtTime(0, now + startOffset + duration + release)
+        gainNode.gain.setValueAtTime(0, now + startOffset + (note.expression?.timingOffset ?? 0))
+        gainNode.gain.linearRampToValueAtTime(velocity, now + startOffset + (note.expression?.timingOffset ?? 0) + attack)
+        gainNode.gain.linearRampToValueAtTime(velocity * sustain, now + startOffset + (note.expression?.timingOffset ?? 0) + attack + decay)
+        gainNode.gain.setValueAtTime(velocity * sustain, now + startOffset + (note.expression?.timingOffset ?? 0) + duration)
+        gainNode.gain.linearRampToValueAtTime(0, now + startOffset + (note.expression?.timingOffset ?? 0) + duration + release)
 
         osc.connect(gainNode)
         gainNode.connect(audioCtx.value!.destination)

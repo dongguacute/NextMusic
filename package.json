@@ -4,13 +4,14 @@
   "packageManager": "pnpm@10.10.0",
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --filter=nextmusic",
+    "dev": "turbo run dev --filter=nextmusic --filter=@netxmusic/core",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "clean": "turbo run clean --continue"
   },
   "devDependencies": {
     "@antfu/eslint-config": "^8.0.0",
+    "@iconify-json/ph": "^1.2.2",
     "@types/node": "^25.5.2",
     "@unocss/eslint-plugin": "^66.6.7",
     "eslint": "^10.1.0",

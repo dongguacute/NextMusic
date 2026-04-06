@@ -1,5 +1,40 @@
-import { defineConfig } from 'unocss'
+import {
+  defineConfig,
+  presetAttributify,
+  presetIcons,
+  presetTypography,
+  presetUno,
+  presetWebFonts,
+  transformerDirectives,
+  transformerVariantGroup,
+} from 'unocss'
 
 export default defineConfig({
-  // ...UnoCSS options
+  shortcuts: [
+    // 你可以在这里定义一些快捷类
+  ],
+  presets: [
+    presetUno(),
+    presetAttributify(),
+    presetIcons({
+      scale: 1.2,
+      warn: true,
+      extraProperties: {
+        'display': 'inline-block',
+        'vertical-align': 'middle',
+      },
+    }),
+    presetTypography(),
+    presetWebFonts({
+      fonts: {
+        sans: 'DM Sans',
+        serif: 'DM Serif Display',
+        mono: 'DM Mono',
+      },
+    }),
+  ],
+  transformers: [
+    transformerDirectives(),
+    transformerVariantGroup(),
+  ],
 })
