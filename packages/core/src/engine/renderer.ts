@@ -21,7 +21,7 @@ export function renderNote(note: Note, projectContext: { root: number, scale: st
     note.octave,
     projectContext.root,
     projectContext.scale,
-    0
+    note.accidental || 0
   )
 
   return {
@@ -41,20 +41,22 @@ export function renderNote(note: Note, projectContext: { root: number, scale: st
  * @returns 音频事件列表
  */
 export function renderTrack(track: Track, project: MusicProject): AudioEvent[] {
+    if (track.isMuted) return []
+    
     return track.notes.map(note => {
     const midi = degreeToMidi(
       note.degree,
       note.octave,
       project.key.root,
       project.key.scale,
-      0 // 目前默认 accidental 为 0
+      note.accidental || 0
     )
 
     return {
       time: note.start + (note.expression?.timingOffset ?? 0),
       duration: note.duration,
       midi: midi,
-      velocity: note.expression?.velocity ?? 0.8,
+      velocity: (note.expression?.velocity ?? 0.8) * track.volume,
       timbre: track.timbre,
       expression: note.expression
     }

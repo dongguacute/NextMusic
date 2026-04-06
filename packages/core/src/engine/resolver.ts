@@ -26,7 +26,7 @@ export function resolveNote(data: unknown, root: number = 60, scale: string = 'm
             note.octave,
             root,
             scale,
-            0 // accidental 默认为 0
+            note.accidental || 0
         )
         return {
             success: true,

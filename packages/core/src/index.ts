@@ -8,6 +8,9 @@ export * from './types/expression'
 export * from './engine/resolver'
 export * from './engine/renderer'
 export * from './engine/synth'
+export * from './engine/quantizer'
+export * from './engine/transformer'
+export * from './engine/recorder'
 export * from './utils'
 
 export interface RenderedProject {

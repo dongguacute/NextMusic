@@ -1,133 +1,168 @@
 import { defineStore } from 'pinia'
-import { type MusicProject, type Note, type Track } from '@netxmusic/core'
+import { 
+  type MusicProject, 
+  type Note, 
+  type Track, 
+  type QuantizeOptions,
+  Quantizer,
+  Transformer,
+  Recorder
+} from '@netxmusic/core'
 
 export const useMusicStore = defineStore('music', () => {
+  // --- 状态定义 ---
   const project = ref<MusicProject>({
+    name: 'New Project',
     tempo: 120,
     timeSignature: [4, 4],
-    key: {
-      root: 60,
-      scale: 'major'
-    },
+    key: { root: 60, scale: 'major' },
     tracks: [
       {
         id: 'track-1',
-        name: 'Synth Lead',
-        instrument: 'synth',
-        timbre: {
-          type: 'sine',
-          envelope: {
-            attack: 0.1,
-            decay: 0.2,
-            sustain: 0.5,
-            release: 0.3
-          }
-        },
+        name: 'Grand Piano',
+        instrument: 'piano',
+        volume: 0.8,
+        isMuted: false,
+        isSolo: false,
         notes: []
       }
-    ]
+    ],
+    loop: { enabled: false, start: 0, end: 4 }
   })
 
-  const isRecording = ref(false)
   const isPlaying = ref(false)
-  const currentTime = ref(0)
-  const startTime = ref(0)
+  const isRecording = ref(false)
+  const currentTime = ref(0) // 当前播放位置（拍数）
   const selectedTrackId = ref('track-1')
-  const selectedNoteIndices = ref<Record<string, Set<number>>>({})
-  const playbackTimer = ref<any>(null)
-  const playbackTimeout = ref<any>(null)
+  const selectedNoteIndices = ref<Set<number>>(new Set())
+  
+  // 录制器实例（仅客户端）
+  const recorder = ref<Recorder | null>(null)
+  
+  onMounted(() => {
+    recorder.value = new Recorder()
+  })
 
-  // 音轨状态：Mute/Solo
-  const trackStates = ref<Record<string, { mute: boolean, solo: boolean }>>({})
-
-  const toggleMute = (trackId: string) => {
-    if (!trackStates.value[trackId]) trackStates.value[trackId] = { mute: false, solo: false }
-    trackStates.value[trackId].mute = !trackStates.value[trackId].mute
+  // --- 项目与音轨管理 ---
+  const addTrack = (name = 'New Track', instrument: any = 'synth') => {
+    const id = `track-${Date.now()}`
+    project.value.tracks.push({
+      id,
+      name,
+      instrument,
+      volume: 0.8,
+      isMuted: false,
+      isSolo: false,
+      notes: []
+    })
+    selectedTrackId.value = id
   }
 
-  const toggleSolo = (trackId: string) => {
-    if (!trackStates.value[trackId]) trackStates.value[trackId] = { mute: false, solo: false }
-    trackStates.value[trackId].solo = !trackStates.value[trackId].solo
+  const removeTrack = (id: string) => {
+    const idx = project.value.tracks.findIndex(t => t.id === id)
+    if (idx !== -1 && project.value.tracks.length > 1) {
+      project.value.tracks.splice(idx, 1)
+      if (selectedTrackId.value === id) {
+        selectedTrackId.value = project.value.tracks[0].id
+      }
+    }
   }
 
-  const isTrackActive = (trackId: string) => {
-    const state = trackStates.value[trackId]
-    if (!state) return true
-    
-    // 如果有任何音轨处于 Solo 状态，只有 Solo 的音轨才发声
-    const hasSolo = Object.values(trackStates.value).some(s => s.solo)
-    if (hasSolo) return state.solo
-    
-    // 否则看是否 Mute
-    return !state.mute
-  }
-
+  // --- 音符操作 ---
   const addNote = (trackId: string, note: Note) => {
     const track = project.value.tracks.find(t => t.id === trackId)
+    if (track) track.notes.push(note)
+  }
+
+  const removeSelectedNotes = () => {
+    const track = project.value.tracks.find(t => t.id === selectedTrackId.value)
     if (track) {
-      track.notes.push(note)
+      const sortedIndices = Array.from(selectedNoteIndices.value).sort((a, b) => b - a)
+      sortedIndices.forEach(idx => track.notes.splice(idx, 1))
+      selectedNoteIndices.value.clear()
     }
   }
 
-  const startPlaybackTimer = (durationInSeconds: number) => {
-    if (playbackTimer.value) clearInterval(playbackTimer.value)
-    if (playbackTimeout.value) clearTimeout(playbackTimeout.value)
+  // --- 引擎功能集成 ---
+  const applyQuantize = (options: QuantizeOptions) => {
+    const track = project.value.tracks.find(t => t.id === selectedTrackId.value)
+    if (track && selectedNoteIndices.value.size > 0) {
+      selectedNoteIndices.value.forEach(idx => {
+        track.notes[idx] = Quantizer.quantizeNote(track.notes[idx], options)
+      })
+    }
+  }
 
-    const start = Date.now()
-    playbackTimer.value = setInterval(() => {
-      const elapsed = (Date.now() - start) / 1000
-      currentTime.value = elapsed * (project.value.tempo / 60)
+  const applyTranspose = (semitones: number) => {
+    const track = project.value.tracks.find(t => t.id === selectedTrackId.value)
+    if (track && selectedNoteIndices.value.size > 0) {
+      const notesToTransform = Array.from(selectedNoteIndices.value).map(idx => track.notes[idx])
+      const transformed = Transformer.transpose(notesToTransform, semitones)
+      Array.from(selectedNoteIndices.value).forEach((idx, i) => {
+        track.notes[idx] = transformed[i]
+      })
+    }
+  }
+
+  // --- 播放与录制控制 ---
+  let playbackInterval: any = null
+
+  const startPlayback = () => {
+    if (isPlaying.value) return
+    isPlaying.value = true
+    const startTimeStamp = Date.now()
+    const startPos = currentTime.value
+
+    playbackInterval = setInterval(() => {
+      const elapsed = (Date.now() - startTimeStamp) / 1000
+      const elapsedBeats = elapsed * (project.value.tempo / 60)
+      let nextPos = startPos + elapsedBeats
+
+      if (project.value.loop?.enabled) {
+        const { start, end } = project.value.loop
+        const len = end - start
+        if (nextPos >= end) nextPos = start + ((nextPos - start) % len)
+      }
+      currentTime.value = nextPos
     }, 16)
+  }
 
-    playbackTimeout.value = setTimeout(() => {
-      stopPlaybackTimer()
-      isPlaying.value = false
+  const stopPlayback = () => {
+    isPlaying.value = false
+    if (playbackInterval) {
+      clearInterval(playbackInterval)
+      playbackInterval = null
+    }
+  }
+
+  const toggleRecording = () => {
+    if (isRecording.value) {
       isRecording.value = false
-    }, durationInSeconds * 1000 + 500)
-  }
-
-  const stopPlaybackTimer = () => {
-    if (playbackTimer.value) {
-      clearInterval(playbackTimer.value)
-      playbackTimer.value = null
-    }
-    if (playbackTimeout.value) {
-      clearTimeout(playbackTimeout.value)
-      playbackTimeout.value = null
-    }
-    currentTime.value = 0
-  }
-
-  const updateNote = (trackId: string, noteIndex: number, newNote: Partial<Note>) => {
-    const track = project.value.tracks.find(t => t.id === trackId)
-    if (track && track.notes[noteIndex]) {
-      track.notes[noteIndex] = { ...track.notes[noteIndex], ...newNote }
+      stopPlayback()
+      const newNotes = recorder.value?.stop() || []
+      const track = project.value.tracks.find(t => t.id === selectedTrackId.value)
+      if (track) track.notes.push(...newNotes)
+    } else {
+      isRecording.value = true
+      recorder.value?.start(Date.now())
+      startPlayback()
     }
   }
 
-  const removeNote = (trackId: string, noteIndex: number) => {
-    const track = project.value.tracks.find(t => t.id === trackId)
-    if (track) {
-      track.notes.splice(noteIndex, 1)
+  const handleInputEvent = (degree: number, octave: number, accidental: number, type: 'noteOn' | 'noteOff') => {
+    if (isRecording.value) {
+      recorder.value?.processEvent({
+        degree, octave, accidental,
+        timestamp: Date.now(),
+        type
+      }, project.value.tempo)
     }
   }
 
   return {
-    project,
-    isRecording,
-    isPlaying,
-    currentTime,
-    startTime,
-    addNote,
-    updateNote,
-    removeNote,
-    selectedTrackId,
-    trackStates,
-    toggleMute,
-    toggleSolo,
-    isTrackActive,
-    selectedNoteIndices,
-    startPlaybackTimer,
-    stopPlaybackTimer
+    project, isPlaying, isRecording, currentTime, selectedTrackId, selectedNoteIndices,
+    addTrack, removeTrack, addNote, removeSelectedNotes,
+    applyQuantize, applyTranspose,
+    startPlayback, stopPlayback, toggleRecording, handleInputEvent
   }
 })
