@@ -73,8 +73,11 @@ export const useAudioEngine = () => {
     musicStore.startPlayback()
     const now = audioCtx.value.currentTime
 
+    const hasSolo = musicStore.project.tracks.some(t => t.isSolo)
+
     musicStore.project.tracks.forEach(track => {
       if (track.isMuted) return
+      if (hasSolo && !track.isSolo) return
       
       const events = renderTrack(track, musicStore.project)
       events.forEach(event => {

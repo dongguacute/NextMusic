@@ -44,6 +44,10 @@ const handleKeyUp = (e: KeyboardEvent) => {
     const { degree, octave } = degreeMap[key]
     stopNote(degree, octave)
   }
+
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    musicStore.removeSelectedNotes()
+  }
 }
 
 onMounted(() => {
@@ -69,9 +73,6 @@ onUnmounted(() => {
 
       <!-- Center: Timeline -->
       <main class="flex-1 flex flex-col overflow-hidden">
-        <div class="h-6 bg-[#2a2a2a] border-b border-black flex items-center px-2 text-[8px] text-gray-500 font-mono">
-          RULER / TIMELINE
-        </div>
         <div class="flex-1 overflow-auto">
           <TimelineGrid />
         </div>

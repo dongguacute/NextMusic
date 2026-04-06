@@ -19,6 +19,7 @@ const musicStore = useMusicStore()
       <div class="flex gap-1">
         <button @click.stop="track.isMuted = !track.isMuted" class="w-6 h-6 rounded bg-black/40 text-[9px] font-bold flex items-center justify-center border border-white/5" :class="{ 'bg-yellow-500 text-black': track.isMuted }">M</button>
         <button @click.stop="track.isSolo = !track.isSolo" class="w-6 h-6 rounded bg-black/40 text-[9px] font-bold flex items-center justify-center border border-white/5" :class="{ 'bg-blue-500 text-white': track.isSolo }">S</button>
+        <button @click.stop="musicStore.selectedTrackId = track.id" class="w-6 h-6 rounded bg-black/40 text-[9px] font-bold flex items-center justify-center border border-white/5" :class="{ 'bg-red-600 text-white': musicStore.selectedTrackId === track.id && musicStore.isRecording }">R</button>
       </div>
 
       <div class="h-1 bg-black/40 rounded-full overflow-hidden">

@@ -4,6 +4,7 @@ export interface RawInputEvent {
     degree: number
     octave: number
     accidental: number
+    velocity?: number
     timestamp: number // 绝对时间（毫秒）
     type: 'noteOn' | 'noteOff'
 }
@@ -12,7 +13,7 @@ export interface RawInputEvent {
  * 录制器：处理实时输入流并生成音符序列
  */
 export class Recorder {
-    private activeNotes: Map<string, { start: number, degree: number, octave: number, accidental: number }> = new Map()
+    private activeNotes: Map<string, { start: number, degree: number, octave: number, accidental: number, velocity: number }> = new Map()
     private recordedNotes: Note[] = []
     private startTime: number = 0
     private isRecording: boolean = false
@@ -26,10 +27,6 @@ export class Recorder {
 
     stop(): Note[] {
         this.isRecording = false
-        // 处理未抬起的音符（强制结束）
-        this.activeNotes.forEach((data, key) => {
-            // 这里可以根据需要处理未结束的音符，或者直接丢弃
-        })
         return [...this.recordedNotes]
     }
 
@@ -46,7 +43,8 @@ export class Recorder {
                 start: relativeTimeInBeats,
                 degree: event.degree,
                 octave: event.octave,
-                accidental: event.accidental
+                accidental: event.accidental,
+                velocity: event.velocity ?? 0.8
             })
             return null
         } else {
@@ -57,7 +55,14 @@ export class Recorder {
                     octave: activeNote.octave,
                     accidental: activeNote.accidental,
                     start: activeNote.start,
-                    duration: Math.max(0.01, relativeTimeInBeats - activeNote.start)
+                    duration: Math.max(0.01, relativeTimeInBeats - activeNote.start),
+                    expression: {
+                        velocity: activeNote.velocity,
+                        articulation: 'lead',
+                        glide: 0,
+                        timingOffset: 0,
+                        vibrato: 0
+                    }
                 }
                 this.recordedNotes.push(note)
                 this.activeNotes.delete(key)

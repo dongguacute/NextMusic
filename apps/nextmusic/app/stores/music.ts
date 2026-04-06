@@ -36,6 +36,11 @@ export const useMusicStore = defineStore('music', () => {
   const selectedTrackId = ref('track-1')
   const selectedNoteIndices = ref<Set<number>>(new Set())
   
+  const gridSettings = ref({
+    snapEnabled: true,
+    gridSize: 16
+  })
+
   // 录制器实例（仅客户端）
   const recorder = ref<Recorder | null>(null)
   
@@ -44,6 +49,8 @@ export const useMusicStore = defineStore('music', () => {
   })
 
   // --- 项目与音轨管理 ---
+  const selectedTrack = computed(() => project.value.tracks.find(t => t.id === selectedTrackId.value))
+
   const addTrack = (name = 'New Track', instrument: any = 'synth') => {
     const id = `track-${Date.now()}`
     project.value.tracks.push({
@@ -113,7 +120,7 @@ export const useMusicStore = defineStore('music', () => {
     const startTimeStamp = Date.now()
     const startPos = currentTime.value
 
-    playbackInterval = setInterval(() => {
+    playbackInterval = requestAnimationFrame(function animate() {
       const elapsed = (Date.now() - startTimeStamp) / 1000
       const elapsedBeats = elapsed * (project.value.tempo / 60)
       let nextPos = startPos + elapsedBeats
@@ -121,17 +128,31 @@ export const useMusicStore = defineStore('music', () => {
       if (project.value.loop?.enabled) {
         const { start, end } = project.value.loop
         const len = end - start
-        if (nextPos >= end) nextPos = start + ((nextPos - start) % len)
+        if (nextPos >= end) {
+          // 重新同步开始时间以保持平滑
+          const loopCount = Math.floor((nextPos - start) / len)
+          // 这里简化处理，实际可能需要更精确的同步
+          if (nextPos >= end) nextPos = start + ((nextPos - start) % len)
+        }
       }
       currentTime.value = nextPos
-    }, 16)
+      if (isPlaying.value) playbackInterval = requestAnimationFrame(animate)
+    })
   }
 
   const stopPlayback = () => {
     isPlaying.value = false
     if (playbackInterval) {
-      clearInterval(playbackInterval)
+      cancelAnimationFrame(playbackInterval)
       playbackInterval = null
+    }
+  }
+
+  const seekTo = (beats: number) => {
+    currentTime.value = Math.max(0, beats)
+    if (isPlaying.value) {
+      stopPlayback()
+      startPlayback()
     }
   }
 
@@ -161,6 +182,7 @@ export const useMusicStore = defineStore('music', () => {
 
   return {
     project, isPlaying, isRecording, currentTime, selectedTrackId, selectedNoteIndices,
+    selectedTrack, gridSettings,
     addTrack, removeTrack, addNote, removeSelectedNotes,
     applyQuantize, applyTranspose,
     startPlayback, stopPlayback, toggleRecording, handleInputEvent
