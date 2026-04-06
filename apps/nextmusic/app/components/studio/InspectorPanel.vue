@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useMusicStore } from '../../stores/music'
+import { computed, ref } from 'vue'
 
 const musicStore = useMusicStore()
 const selectedNote = computed(() => {
@@ -29,7 +30,9 @@ const updateNoteAccidental = (val: number) => {
   }
 }
 
-const applyQuantize = () => musicStore.applyQuantize({ grid: musicStore.gridSettings.gridSize as any, strength: 1, quantizeStart: true, quantizeDuration: false })
+const quantizeGrid = ref(16)
+
+const applyQuantize = () => musicStore.applyQuantize({ grid: quantizeGrid.value as any, strength: 1, quantizeStart: true, quantizeDuration: false })
 </script>
 
 <template>
