@@ -10,6 +10,20 @@
       </div>
       <div class="flex gap-2">
         <button 
+          v-if="audioStarted && !isPlayingDemo"
+          @click="playDemo" 
+          class="px-4 py-1 bg-blue-600 text-white text-sm font-bold rounded hover:bg-blue-500 transition-colors"
+        >
+          PLAY DEMO
+        </button>
+        <button 
+          v-if="isPlayingDemo"
+          @click="stopDemo" 
+          class="px-4 py-1 bg-red-600 text-white text-sm font-bold rounded hover:bg-red-500 transition-colors"
+        >
+          STOP DEMO
+        </button>
+        <button 
           @click="initAudio" 
           v-if="!audioStarted"
           class="px-4 py-1 bg-white text-black text-sm font-bold rounded hover:bg-zinc-200 transition-colors"
@@ -87,6 +101,7 @@ const touchY = ref(0);
 const currentEnergy = ref(0);
 const currentPitch = ref(60);
 const statusText = ref('等待音频初始化...');
+const isPlayingDemo = ref(false);
 
 // --- 引擎组件 ---
 let coordinator: Coordinator | null = null;
@@ -351,7 +366,64 @@ const updateAudioParameters = () => {
   filter.frequency.setTargetAtTime(filterFreq, now, 0.1);
 };
 
+// --- 自动演奏 (Demo) ---
+let demoInterval: any = null;
+const playDemo = () => {
+  if (!audioCtx || isPlayingDemo.value) return;
+  
+  isPlayingDemo.value = true;
+  statusText.value = '正在自动演奏：巴赫 - G大调前奏曲 (片段)';
+  
+  // 简化的巴赫前奏曲音符序列 (MIDI)
+  const bachNotes = [
+    67, 62, 71, 69, 71, 62, 71, 62, // 第一小节
+    67, 62, 71, 69, 71, 62, 71, 62,
+    67, 64, 72, 71, 72, 64, 72, 64, // 第二小节
+    67, 64, 72, 71, 72, 64, 72, 64,
+    67, 65, 74, 72, 74, 65, 74, 65, // 第三小节
+    67, 65, 74, 72, 74, 65, 74, 65,
+    67, 62, 71, 69, 71, 62, 71, 62, // 回到根音
+    67, 62, 71, 69, 71, 62, 71, 62
+  ];
+  
+  let noteIndex = 0;
+  const tempo = 150; // 毫秒/音符
+  
+  isPressing.value = true;
+  
+  demoInterval = setInterval(() => {
+    const midi = bachNotes[noteIndex];
+    if (midi === undefined) return;
+    
+    // 模拟触控位置映射
+    const rect = touchZone.value?.getBoundingClientRect();
+    if (rect) {
+      const xRatio = (midi - 48) / 36;
+      touchX.value = rect.left + rect.width * xRatio;
+      touchY.value = rect.top + rect.height * 0.3; // 固定在 0.7 能量处
+    }
+    
+    currentPitch.value = midi;
+    currentEnergy.value = 0.7 + Math.random() * 0.2; // 增加一点动态随机感
+    
+    processNMEF();
+    
+    noteIndex = (noteIndex + 1) % bachNotes.length;
+  }, tempo);
+};
+
+const stopDemo = () => {
+  if (demoInterval) {
+    clearInterval(demoInterval);
+    demoInterval = null;
+  }
+  isPlayingDemo.value = false;
+  handleEnd();
+  statusText.value = '自动演奏已停止';
+};
+
 onUnmounted(() => {
+  stopDemo();
   if (audioCtx) {
     audioCtx.close();
   }
