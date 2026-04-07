@@ -86,6 +86,18 @@ export type GlobalContext = z.infer<typeof GlobalContextSchema>;
 export type Header = z.infer<typeof HeaderSchema>;
 export type Event = z.infer<typeof EventSchema>;
 export type EventPayload = z.infer<typeof EventPayloadSchema>;
+export type Dynamics = z.infer<typeof DynamicsSchema>;
+
+/**
+ * 表现力向量 (Expression Vector)
+ * 包含能量、不稳定度、攻击性、连贯性
+ */
+export interface ExpressionVector {
+  energy: number;       // 能量 (0-1)
+  instability: number;  // 不稳定度 (0-1)
+  aggression: number;   // 攻击性 (0-1)
+  coherence: number;    // 连贯性 (0-1)
+}
 
 /**
  * 验证函数
