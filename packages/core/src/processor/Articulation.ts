@@ -1,10 +1,75 @@
-import { Event, ExpressionVector } from '../types/input';
+import { Event, ExpressionVector, ArticulationResult, ArticulationType } from '../types/input';
 
 /**
  * Articulation 类负责分析演奏的断句和表现力
  * 迁移自 GestureAnalyzer 的表现力计算逻辑
  */
 export class Articulation {
+  // 阈值配置
+  private static readonly LEGATO_TIME_THRESHOLD = 50; // 毫秒，判定为连奏的时间间隔
+  private static readonly ATTACK_ENERGY_THRESHOLD = 0.8; // 能量阈值，判定为重击
+  private static readonly ATTACK_VELOCITY_THRESHOLD = 100; // 速度阈值
+  private static readonly LEGATO_PITCH_THRESHOLD = 12; // 半音，判定为连奏的音程间隔 (一个八度内)
+
+  /**
+   * 分析当前事件相对于历史事件的衔接类型
+   * @param currentEvent 当前触发的事件
+   * @param lastEvent 上一个触发的事件
+   * @param timestamp 当前时间戳
+   * @param lastTimestamp 上一个事件的时间戳
+   */
+  public static analyze(
+    currentEvent: Event,
+    lastEvent: Event | null,
+    timestamp: number,
+    lastTimestamp: number | null
+  ): ArticulationResult {
+    const expression = this.calculateExpression([currentEvent]);
+    let type: ArticulationType = 'None';
+    let weight = 0;
+
+    // 1. 检测 Legato (连奏)
+    // 逻辑：监测相邻两个音的 Time 和 Pitch 间隔。如果间隔极短，它会强行触发采样库里的 Legato 切片
+    if (lastEvent && lastTimestamp !== null) {
+      const timeDiff = timestamp - lastTimestamp;
+      const pitchDiff = Math.abs(currentEvent.payload.pitch.base_note - lastEvent.payload.pitch.base_note);
+      
+      if (timeDiff < this.LEGATO_TIME_THRESHOLD && pitchDiff <= this.LEGATO_PITCH_THRESHOLD) {
+        type = 'Legato';
+        // 权重基于时间间隔，越短权重越高
+        weight = 1 - (timeDiff / this.LEGATO_TIME_THRESHOLD);
+        
+        return { expression, type, weight };
+      }
+    }
+
+    // 2. 检测 Attack (重击)
+    // 逻辑：如果用户有一个瞬时的高能量输入，它会触发 Attack（重击）切片
+    const currentDynamics = currentEvent.payload.dynamics;
+    if (currentDynamics.energy > this.ATTACK_ENERGY_THRESHOLD || 
+        currentDynamics.velocity > this.ATTACK_VELOCITY_THRESHOLD) {
+      type = 'Attack';
+      // 权重基于能量或速度的溢出程度
+      const energyWeight = Math.max(0, (currentDynamics.energy - this.ATTACK_ENERGY_THRESHOLD) / (1 - this.ATTACK_ENERGY_THRESHOLD));
+      const velocityWeight = Math.max(0, (currentDynamics.velocity - this.ATTACK_VELOCITY_THRESHOLD) / (127 - this.ATTACK_VELOCITY_THRESHOLD));
+      weight = Math.max(energyWeight, velocityWeight);
+
+      return { expression, type, weight };
+    }
+
+    // 3. 检测 Staccato (断奏)
+    if (currentEvent.payload.intent.staccato_weight > 0.5) {
+      type = 'Staccato';
+      weight = currentEvent.payload.intent.staccato_weight;
+    }
+
+    return {
+      expression,
+      type,
+      weight
+    };
+  }
+
   /**
    * 计算表现力向量 (Expression Vector)
    * 基于历史 dynamics 数据进行对比计算

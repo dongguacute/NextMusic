@@ -100,6 +100,20 @@ export interface ExpressionVector {
 }
 
 /**
+ * 衔接与装饰音类型 (Articulation Type)
+ */
+export type ArticulationType = 'None' | 'Legato' | 'Staccato' | 'Attack' | 'Glissando';
+
+/**
+ * 衔接分析结果
+ */
+export interface ArticulationResult {
+  expression: ExpressionVector;
+  type: ArticulationType;
+  weight: number; // 触发强度 (0-1)
+}
+
+/**
  * 验证函数
  * @param data 待验证的 JSON 数据
  * @returns 验证结果
