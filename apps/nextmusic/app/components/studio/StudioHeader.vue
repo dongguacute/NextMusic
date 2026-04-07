@@ -27,10 +27,10 @@ const rootNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', '
     <div class="flex items-center gap-2">
       <div class="flex bg-black/50 rounded border border-white/10 p-1">
         <button @click="togglePlay" class="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 transition-colors" :class="{ 'text-green-500': musicStore.isPlaying }">
-          <div :class="musicStore.isPlaying ? 'i-ph-stop-fill' : 'i-ph-play-fill'"></div>
+          <Icon :name="musicStore.isPlaying ? 'ph:stop-fill' : 'ph:play-fill'" />
         </button>
         <button @click="musicStore.toggleRecording" class="w-8 h-8 flex items-center justify-center rounded hover:bg-white/10 transition-colors" :class="{ 'text-red-500': musicStore.isRecording }">
-          <div class="i-ph-circle-fill text-xs" :class="{ 'animate-pulse': musicStore.isRecording }"></div>
+          <Icon name="ph:circle-fill" class="text-xs" :class="{ 'animate-pulse': musicStore.isRecording }" />
         </button>
       </div>
 

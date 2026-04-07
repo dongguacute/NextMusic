@@ -5,8 +5,10 @@ export default defineNuxtConfig({
   future: {
     compatibilityVersion: 4,
   },
+  css: ['./app/assets/css/main.css'],
   modules: [
-    '@unocss/nuxt',
-    '@pinia/nuxt'
+    '@nuxtjs/tailwindcss',
+    '@pinia/nuxt',
+    '@nuxt/icon'
   ],
 })

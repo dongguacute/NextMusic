@@ -13,7 +13,7 @@ const musicStore = useMusicStore()
     >
       <div class="flex items-center justify-between">
         <span class="text-[11px] font-bold truncate">{{ track.name }}</span>
-        <div class="i-ph-waveform-fill text-blue-500 opacity-50"></div>
+        <Icon name="ph:waveform-fill" class="text-blue-500 opacity-50" />
       </div>
 
       <div class="flex gap-1">
@@ -28,7 +28,7 @@ const musicStore = useMusicStore()
     </div>
 
     <button @click="musicStore.addTrack()" class="p-4 text-gray-500 hover:text-white transition-colors flex items-center justify-center">
-      <div class="i-ph-plus-bold"></div>
+      <Icon name="ph:plus-bold" />
     </button>
   </div>
 </template>
