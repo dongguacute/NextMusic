@@ -92,8 +92,74 @@ const statusText = ref('等待音频初始化...');
 let coordinator: Coordinator | null = null;
 let audioCtx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
-let oscillator: OscillatorNode | null = null;
 let filter: BiquadFilterNode | null = null;
+let reverbNode: ConvolverNode | null = null;
+let compressor: DynamicsCompressorNode | null = null;
+
+// 钢琴音色相关的 AudioBuffer
+const pianoSamples = ref<Map<number, AudioBuffer>>(new Map());
+const activeNodes = new Map<number, AudioBufferSourceNode>();
+
+// 生成简单的混响脉冲响应 (Impulse Response)
+const createReverb = (ctx: AudioContext, duration: number, decay: number) => {
+  const sampleRate = ctx.sampleRate;
+  const length = sampleRate * duration;
+  const impulse = ctx.createBuffer(2, length, sampleRate);
+  for (let i = 0; i < 2; i++) {
+    const channelData = impulse.getChannelData(i);
+    for (let j = 0; j < length; j++) {
+      channelData[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / length, decay);
+    }
+  }
+  return impulse;
+};
+
+// 加载钢琴采样 (使用公开的钢琴采样 URL 作为演示)
+const loadPianoSamples = async (ctx: AudioContext) => {
+  statusText.value = '正在加载钢琴音色...';
+  // 切换到更优质的采样源
+  const baseUrl = 'https://gleitz.github.io/midi-js-soundfonts/FluidR3_GM/acoustic_grand_piano-mp3';
+  const notes = [24, 36, 48, 60, 72, 84, 96]; // 覆盖更广音域
+  
+  const midiToName = (midi: number) => {
+    const names = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+    return `${names[midi % 12]}${Math.floor(midi / 12) - 1}`;
+  };
+
+  for (const midi of notes) {
+    try {
+      const name = midiToName(midi).replace('#', 's');
+      const response = await fetch(`${baseUrl}/${name}.mp3`);
+      const arrayBuffer = await response.arrayBuffer();
+      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+      pianoSamples.value.set(midi, audioBuffer);
+    } catch (e) {
+      console.error(`Failed to load sample for MIDI ${midi}`, e);
+    }
+  }
+  statusText.value = '钢琴音色加载完成！';
+};
+
+// 寻找最近的采样并计算播放速率
+const getClosestSample = (targetMidi: number) => {
+  let closestMidi = -1;
+  let minDiff = Infinity;
+  
+  for (const midi of pianoSamples.value.keys()) {
+    const diff = Math.abs(targetMidi - midi);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestMidi = midi;
+    }
+  }
+  
+  if (closestMidi === -1) return null;
+  
+  return {
+    buffer: pianoSamples.value.get(closestMidi)!,
+    playbackRate: Math.pow(2, (targetMidi - closestMidi) / 12)
+  };
+};
 
 // --- 初始化 ---
 const initAudio = async () => {
@@ -103,30 +169,45 @@ const initAudio = async () => {
     audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     coordinator = new Coordinator();
     
-    // 简单的 Web Audio 链: Osc -> Filter -> Gain -> Destination
+    // 效果链: Sample -> Filter -> Compressor -> Reverb -> MasterGain -> Destination
     masterGain = audioCtx.createGain();
     masterGain.gain.value = 0;
     
+    compressor = audioCtx.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-24, audioCtx.currentTime);
+    compressor.knee.setValueAtTime(30, audioCtx.currentTime);
+    compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
+    compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
+    compressor.release.setValueAtTime(0.25, audioCtx.currentTime);
+
+    reverbNode = audioCtx.createConvolver();
+    reverbNode.buffer = createReverb(audioCtx, 2.5, 2.0); // 2.5秒混响
+
     filter = audioCtx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 1000;
-    filter.Q.value = 1;
+    filter.frequency.value = 2000;
+    filter.Q.value = 0.7;
 
+    // 连接节点
+    filter.connect(compressor);
+    compressor.connect(reverbNode);
+    reverbNode.connect(masterGain);
+    
+    // 干湿分离 (Parallel Processing for Reverb)
+    compressor.connect(masterGain); 
+    
     masterGain.connect(audioCtx.destination);
-    filter.connect(masterGain);
+
+    await loadPianoSamples(audioCtx);
 
     audioStarted.value = true;
-    statusText.value = '音频就绪，请在屏幕上滑动';
+    if (statusText.value.includes('加载完成')) {
+      statusText.value = '音频就绪，请在屏幕上滑动';
+    }
     
     if (audioCtx.state === 'suspended') {
       await audioCtx.resume();
     }
-    
-    // 启动基础振荡器
-    oscillator = audioCtx.createOscillator();
-    oscillator.type = 'sawtooth';
-    oscillator.connect(filter);
-    oscillator.start();
   } catch (e) {
     console.error('Failed to init audio:', e);
     statusText.value = '音频初始化失败';
@@ -138,7 +219,6 @@ const handleStart = (e: MouseEvent | Touch) => {
   if (!audioStarted.value) return;
   isPressing.value = true;
   updatePosition(e);
-  // startSound(); // 不再需要每次点击启动，只需控制增益
   processNMEF();
 };
 
@@ -150,10 +230,14 @@ const handleMove = (e: MouseEvent | Touch) => {
 
 const handleEnd = () => {
   isPressing.value = false;
-  // stopSound(); // 不再停止振荡器，只需控制增益
   if (masterGain && audioCtx) {
-    masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
+    masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.2);
   }
+  // 停止所有正在播放的源
+  activeNodes.forEach(node => {
+    try { node.stop(audioCtx!.currentTime + 0.5); } catch(e) {}
+  });
+  activeNodes.clear();
 };
 
 const handleTouchStart = (e: TouchEvent) => {
@@ -181,7 +265,7 @@ const updatePosition = (e: MouseEvent | Touch) => {
 
 // --- 核心逻辑：生成 NMEF 并驱动 Coordinator ---
 const processNMEF = () => {
-  if (!coordinator) return;
+  if (!coordinator || !audioCtx) return;
 
   const nmefData: InputData = {
     header: {
@@ -225,20 +309,46 @@ const processNMEF = () => {
 };
 
 const updateAudioParameters = () => {
-  if (!audioCtx || !oscillator || !masterGain || !filter) return;
+  if (!audioCtx || !masterGain || !filter) return;
 
   const now = audioCtx.currentTime;
   
-  // 频率计算 (MIDI to Hz)
-  const freq = 440 * Math.pow(2, (currentPitch.value - 69) / 12);
-  oscillator.frequency.setTargetAtTime(freq, now, 0.05);
+  // 钢琴采样播放逻辑
+  const sampleInfo = getClosestSample(currentPitch.value);
+  if (sampleInfo && isPressing.value) {
+    // 如果音高变化较大或没有正在播放的源，启动新源 (模拟简单的连奏)
+    const currentMidiInt = Math.round(currentPitch.value);
+    if (!activeNodes.has(currentMidiInt)) {
+      // 停止旧的源
+      activeNodes.forEach((node, midi) => {
+        if (Math.abs(midi - currentMidiInt) > 2) {
+          node.stop(now + 0.1);
+          activeNodes.delete(midi);
+        }
+      });
+
+      const source = audioCtx.createBufferSource();
+      source.buffer = sampleInfo.buffer;
+      source.playbackRate.value = sampleInfo.playbackRate;
+      source.loop = true; // 钢琴通常不循环，但为了持续发声这里开启循环
+      source.connect(filter);
+      source.start(now);
+      activeNodes.set(currentMidiInt, source);
+    } else {
+      // 更新现有源的播放速率
+      const node = activeNodes.get(currentMidiInt);
+      if (node) {
+        node.playbackRate.setTargetAtTime(sampleInfo.playbackRate, now, 0.05);
+      }
+    }
+  }
 
   // 能量映射到增益和滤波频率
-  const targetGain = isPressing.value ? currentEnergy.value * 0.3 : 0;
-  masterGain.gain.setTargetAtTime(targetGain, now, 0.05);
+  const targetGain = isPressing.value ? currentEnergy.value * 0.8 : 0;
+  masterGain.gain.setTargetAtTime(targetGain, now, 0.1);
   
-  const filterFreq = 200 + currentEnergy.value * 5000;
-  filter.frequency.setTargetAtTime(filterFreq, now, 0.05);
+  const filterFreq = 500 + currentEnergy.value * 8000;
+  filter.frequency.setTargetAtTime(filterFreq, now, 0.1);
 };
 
 onUnmounted(() => {
