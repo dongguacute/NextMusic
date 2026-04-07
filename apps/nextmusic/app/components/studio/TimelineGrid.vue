@@ -5,6 +5,9 @@ const musicStore = useMusicStore()
 const beatWidth = 80
 const trackHeight = 120
 
+// 默认插入参数
+const defaultOctave = ref(0)
+
 // 交互状态
 const isDraggingPlayhead = ref(false)
 const dragNoteInfo = ref<{ trackId: string, noteIndex: number, startX: number, startY: number, originalStart: number, originalDegree: number } | null>(null)
@@ -89,14 +92,28 @@ const handleGlobalMouseUp = () => {
   resizeNoteInfo.value = null
 }
 
+const handleKeyDown = (e: KeyboardEvent) => {
+  if (e.key === 'ArrowUp' && e.shiftKey) {
+    defaultOctave.value = Math.min(3, defaultOctave.value + 1)
+    e.preventDefault()
+  } else if (e.key === 'ArrowDown' && e.shiftKey) {
+    defaultOctave.value = Math.max(-3, defaultOctave.value - 1)
+    e.preventDefault()
+  } else if (e.key === 'Delete' || e.key === 'Backspace') {
+    musicStore.removeSelectedNotes()
+  }
+}
+
 onMounted(() => {
   window.addEventListener('mousemove', handleGlobalMouseMove)
   window.addEventListener('mouseup', handleGlobalMouseUp)
+  window.addEventListener('keydown', handleKeyDown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('mousemove', handleGlobalMouseMove)
   window.removeEventListener('mouseup', handleGlobalMouseUp)
+  window.removeEventListener('keydown', handleKeyDown)
 })
 
 const handleGridClick = (e: MouseEvent, trackId: string) => {
@@ -106,12 +123,20 @@ const handleGridClick = (e: MouseEvent, trackId: string) => {
   const y = e.clientY - rect.top
   
   musicStore.selectedTrackId = trackId
+  
+  let start = x / beatWidth
+  if (musicStore.gridSettings.snapEnabled) {
+    const step = 1 / (musicStore.gridSettings.gridSize / 4)
+    start = Math.floor(start / step) * step
+  }
+
   musicStore.addNote(trackId, {
     degree: Math.max(1, Math.min(7, 7 - Math.floor((y / trackHeight) * 7))),
-    octave: 0,
-    start: Math.floor(x / beatWidth),
+    octave: defaultOctave.value,
+    start,
     duration: 1,
-    accidental: 0
+    accidental: 0,
+    expression: { velocity: 0.8, articulation: 'lead' }
   })
 }
 </script>
@@ -172,12 +197,15 @@ const handleGridClick = (e: MouseEvent, trackId: string) => {
           @mousedown.stop="handleNoteMouseDown($event, track.id, idx)"
         >
           <!-- Note Content -->
-          <div class="flex-1 flex items-center justify-center text-[10px] font-black italic text-white/90">
-            {{ note.degree }}{{ note.accidental === 1 ? '#' : note.accidental === -1 ? 'b' : '' }}
+          <div class="flex-1 flex flex-col items-center justify-center leading-none">
+            <span class="text-[10px] font-black italic text-white/90">
+              {{ note.degree }}{{ note.accidental === 1 ? '#' : note.accidental === -1 ? 'b' : '' }}
+            </span>
+            <span class="text-[7px] font-bold text-white/50">{{ note.octave > 0 ? '+' + note.octave : note.octave < 0 ? note.octave : '' }}</span>
           </div>
           
           <!-- Velocity Bar -->
-          <div class="h-0.5 bg-white/30 self-start ml-1 mb-0.5 rounded-full" :style="{ width: `${(note.expression?.velocity ?? 0.8) * 80}%` }"></div>
+          <div class="h-0.5 bg-white/40 self-start ml-1 mb-0.5 rounded-full transition-all" :style="{ width: `${(note.expression?.velocity ?? 0.8) * 90}%` }"></div>
 
           <!-- Resize Handle -->
           <div class="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize group-hover:bg-white/20 z-40"></div>

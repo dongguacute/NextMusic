@@ -1,8 +1,30 @@
 <script setup lang="ts">
 import { useMusicStore } from '../../stores/music'
 import { computed, ref } from 'vue'
+import { TimbreParamsSchema, OscillatorTypeSchema } from '@netxmusic/core'
 
 const musicStore = useMusicStore()
+
+const updateTrackTimbre = (patch: any) => {
+  if (musicStore.selectedTrack) {
+    if (!musicStore.selectedTrack.timbre) {
+      musicStore.selectedTrack.timbre = TimbreParamsSchema.parse({})
+    }
+    // Deep merge or specific update
+    if (patch.envelope) {
+      musicStore.selectedTrack.timbre.envelope = {
+        ...musicStore.selectedTrack.timbre.envelope,
+        ...patch.envelope
+      }
+    } else {
+      Object.assign(musicStore.selectedTrack.timbre, patch)
+    }
+  }
+}
+
+const oscillatorTypes = OscillatorTypeSchema.options
+const articulations = ['lead', 'pad', 'pluck'] as const
+
 const selectedNote = computed(() => {
   const track = musicStore.selectedTrack
   if (!track || musicStore.selectedNoteIndices.size === 0) return null
@@ -64,6 +86,20 @@ const applyQuantize = () => musicStore.applyQuantize({ grid: quantizeGrid.value 
       <div v-if="selectedNote" class="flex flex-col gap-2">
         <h3 class="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Note Expression</h3>
         <div class="bg-black/20 p-3 rounded border border-blue-500/20 flex flex-col gap-3">
+          <!-- Articulation -->
+          <div class="flex flex-col gap-1">
+            <label class="text-[9px] text-gray-500 uppercase">Articulation</label>
+            <div class="flex gap-1">
+              <button v-for="art in articulations" :key="art"
+                @click="updateNoteExpression({ articulation: art })"
+                class="flex-1 py-1 text-[9px] rounded border border-white/5 transition-colors uppercase"
+                :class="selectedNote.expression?.articulation === art ? 'bg-blue-600 text-white' : 'bg-black/20 text-gray-400 hover:bg-white/5'"
+              >
+                {{ art }}
+              </button>
+            </div>
+          </div>
+
           <div class="flex flex-col gap-1">
             <div class="flex justify-between items-center">
               <label class="text-[9px] text-gray-500 uppercase">Velocity</label>
@@ -104,6 +140,41 @@ const applyQuantize = () => musicStore.applyQuantize({ grid: quantizeGrid.value 
               <option value="synth">Synthesizer</option>
               <option value="guitar">Guitar</option>
             </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Timbre Editor (New Section) -->
+      <div v-if="musicStore.selectedTrack" class="flex flex-col gap-2">
+        <h3 class="text-[10px] font-bold text-purple-400 uppercase tracking-widest">Timbre (Synth)</h3>
+        <div class="bg-black/20 p-3 rounded border border-purple-500/20 flex flex-col gap-3">
+          <!-- Oscillator -->
+          <div class="flex flex-col gap-1">
+            <label class="text-[9px] text-gray-500 uppercase">Oscillator</label>
+            <div class="grid grid-cols-2 gap-1">
+              <button v-for="type in oscillatorTypes" :key="type"
+                @click="updateTrackTimbre({ oscillator: type })"
+                class="py-1 text-[9px] rounded border border-white/5 transition-colors uppercase"
+                :class="musicStore.selectedTrack.timbre?.oscillator === type ? 'bg-purple-600 text-white' : 'bg-black/20 text-gray-400 hover:bg-white/5'"
+              >
+                {{ type }}
+              </button>
+            </div>
+          </div>
+
+          <!-- ADSR Envelope -->
+          <div class="flex flex-col gap-2">
+            <label class="text-[9px] text-gray-500 uppercase">Envelope (ADSR)</label>
+            <div v-for="param in (['attack', 'decay', 'sustain', 'release'] as const)" :key="param" class="flex flex-col gap-0.5">
+              <div class="flex justify-between items-center">
+                <span class="text-[8px] text-gray-500 uppercase">{{ param }}</span>
+                <span class="text-[8px] font-mono text-purple-400">{{ (musicStore.selectedTrack.timbre?.envelope?.[param] ?? (param === 'sustain' ? 0.5 : 0.1)).toFixed(2) }}</span>
+              </div>
+              <input type="range" :min="0" :max="param === 'sustain' ? 1 : 2" step="0.01"
+                :value="musicStore.selectedTrack.timbre?.envelope?.[param] ?? (param === 'sustain' ? 0.5 : 0.1)"
+                @input="(e: any) => updateTrackTimbre({ envelope: { [param]: parseFloat(e.target.value) } })"
+                class="w-full accent-purple-500 h-1" />
+            </div>
           </div>
         </div>
       </div>

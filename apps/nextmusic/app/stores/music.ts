@@ -6,10 +6,13 @@ import {
   type QuantizeOptions,
   Quantizer,
   Transformer,
-  Recorder
+  Recorder,
+  safeValidateMusicProject
 } from '@netxmusic/core'
 
 export const useMusicStore = defineStore('music', () => {
+  const STORAGE_KEY = 'nextmusic_project'
+
   // --- 状态定义 ---
   const project = ref<MusicProject>({
     name: 'New Project',
@@ -30,6 +33,28 @@ export const useMusicStore = defineStore('music', () => {
     loop: { enabled: false, start: 0, end: 4 }
   })
 
+  // --- 持久化逻辑 ---
+  const saveProject = () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(project.value))
+  }
+
+  const loadProject = () => {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (saved) {
+      try {
+        const data = JSON.parse(saved)
+        const result = safeValidateMusicProject(data)
+        if (result.success) {
+          project.value = result.data
+        } else {
+          console.warn('Saved project is invalid:', result.error)
+        }
+      } catch (e) {
+        console.error('Failed to load project:', e)
+      }
+    }
+  }
+
   const isPlaying = ref(false)
   const isRecording = ref(false)
   const currentTime = ref(0) // 当前播放位置（拍数）
@@ -46,7 +71,13 @@ export const useMusicStore = defineStore('music', () => {
   
   onMounted(() => {
     recorder.value = new Recorder()
+    loadProject()
   })
+
+  // 自动保存
+  watch(project, () => {
+    saveProject()
+  }, { deep: true })
 
   // --- 项目与音轨管理 ---
   const selectedTrack = computed(() => project.value.tracks.find(t => t.id === selectedTrackId.value))

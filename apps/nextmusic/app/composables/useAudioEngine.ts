@@ -29,10 +29,11 @@ export const useAudioEngine = () => {
     const osc = audioCtx.value.createOscillator()
     const gain = audioCtx.value.createGain()
     
-    osc.type = (track.timbre?.oscillator || 'sine') as any
+    const timbre = track.timbre || { oscillator: 'sine', envelope: { attack: 0.01, decay: 0.1, sustain: 0.5, release: 0.1 } }
+    osc.type = timbre.oscillator as any
     osc.frequency.setValueAtTime(freq, now)
     
-    const { attack = 0.01 } = track.timbre?.envelope || {}
+    const { attack = 0.01 } = timbre.envelope || {}
     gain.gain.setValueAtTime(0, now)
     gain.gain.linearRampToValueAtTime(track.volume, now + attack)
 
@@ -80,6 +81,8 @@ export const useAudioEngine = () => {
       if (hasSolo && !track.isSolo) return
       
       const events = renderTrack(track, musicStore.project)
+      const timbre = track.timbre || { oscillator: 'sine', envelope: { attack: 0.1, decay: 0.1, sustain: 0.5, release: 0.3 } }
+
       events.forEach(event => {
         const start = event.time * (60 / musicStore.project.tempo)
         const duration = event.duration * (60 / musicStore.project.tempo)
@@ -88,11 +91,14 @@ export const useAudioEngine = () => {
         const osc = audioCtx.value!.createOscillator()
         const gain = audioCtx.value!.createGain()
         
-        osc.type = (track.timbre?.oscillator || 'sine') as any
+        osc.type = timbre.oscillator as any
         osc.frequency.setValueAtTime(freq, now + start)
 
-        const { attack = 0.01, decay = 0.1, sustain = 0.5, release = 0.1 } = track.timbre?.envelope || {}
-        const v = event.velocity
+        // Use SynthEngine.applyEnvelope logic or manual implementation
+        // Since SynthEngine.applyEnvelope returns a gain multiplier at a specific time,
+        // for Web Audio API scheduling, we still need to set points.
+        const { attack, decay, sustain, release } = timbre.envelope
+        const v = event.velocity * track.volume
 
         gain.gain.setValueAtTime(0, now + start)
         gain.gain.linearRampToValueAtTime(v, now + start + attack)
