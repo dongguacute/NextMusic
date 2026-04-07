@@ -99,6 +99,20 @@ export class ScaleSystem {
   }
 
   /**
+   * 获取当前调式下的所有合法音符 (在给定范围内)
+   */
+  public getValidNotesInRange(centerMidi: number, range: number): number[] {
+    const validNotes: number[] = [];
+    for (let i = centerMidi - range; i <= centerMidi + range; i++) {
+      const constrained = this.applyScaleConstraint(i);
+      if (Math.abs(constrained - i) < 0.1) { // 如果吸附后的音符就是原音符，说明是合法音符
+        validNotes.push(i);
+      }
+    }
+    return validNotes;
+  }
+
+  /**
    * 标准 MIDI 编号转频率公式
    */
   private midiToFreq(midi: number): number {
