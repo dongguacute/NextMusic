@@ -49,6 +49,7 @@
     <div 
       ref="touchZone"
       class="flex-1 relative cursor-crosshair active:cursor-none"
+      :class="{ 'pointer-events-none opacity-90': isPlayingDemo }"
       @mousedown="handleStart"
       @mousemove="handleMove"
       @mouseup="handleEnd"
