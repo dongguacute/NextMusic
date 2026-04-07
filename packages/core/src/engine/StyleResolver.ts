@@ -1,65 +1,64 @@
 import { ExpressionVector } from '../types/input';
-import { Articulation } from '../processor/Articulation';
 import GestureAnalyzer from '../processor/GestureAnalyzer';
 
+/**
+ * 演奏参数映射，定义了表现力向量如何转化为具体的合成器/效果器参数
+ */
+export interface ArticulationInstruction {
+  technique: string;        // 演奏技法 (如: "glissando", "feedback", "palm_mute")
+  intensity: number;       // 技法强度 (0-1)
+  timbre_modifiers: string[]; // 音色修正指令
+  description: string;     // 人类可读的描述 (用于调试或下一级处理)
+}
+
+/**
+ * StyleDNA 定义了不同音乐风格的“表现力翻译规则”
+ * 它是风格的灵魂，决定了同样的输入能量在不同风格下如何转化为不同的演奏技法
+ */
 export interface StyleDNA {
   name: string;
   /**
-   * 根据表现力向量解析出具体的演奏指令
-   * @param vector 表现力向量 (energy, instability, aggression, coherence)
-   * @returns 具体的演奏指令描述
+   * 核心映射逻辑：将抽象的表现力向量 (ExpressionVector) 
+   * 翻译为具体的演奏指令 (ArticulationInstruction)
    */
-  resolveInstruction(vector: ExpressionVector): string;
+  resolve(vector: ExpressionVector): ArticulationInstruction;
 }
 
 /**
- * Jazz 风格 DNA
+ * 基础风格实现，支持通过配置规则来定义风格
  */
-export class JazzDNA implements StyleDNA {
-  name = 'Jazz';
-  resolveInstruction(vector: ExpressionVector): string {
-    if (vector.energy > 0.7) {
-      return '这个音需要一点蓝调的下行滑音';
-    }
-    return '轻柔的切分音阶推进';
+export class ConfigurableStyleDNA implements StyleDNA {
+  constructor(
+    public name: string,
+    private rules: (vector: ExpressionVector) => ArticulationInstruction
+  ) {}
+
+  resolve(vector: ExpressionVector): ArticulationInstruction {
+    return this.rules(vector);
   }
 }
 
 /**
- * Heavy Metal 风格 DNA
+ * StyleResolver 负责持有并应用当前的 StyleDNA
  */
-export class HeavyMetalDNA implements StyleDNA {
-  name = 'Heavy Metal';
-  resolveInstruction(vector: ExpressionVector): string {
-    if (vector.energy > 0.7) {
-      return '给这个音加上极强的过载反馈';
-    }
-    return '沉重的低音闷音奏法';
-  }
-}
-
 export class StyleResolver {
   private gestureAnalyzer: GestureAnalyzer;
   private currentDNA: StyleDNA;
 
-  constructor(dna: StyleDNA = new JazzDNA()) {
+  constructor(initialDNA: StyleDNA) {
     this.gestureAnalyzer = new GestureAnalyzer();
-    this.currentDNA = dna;
+    this.currentDNA = initialDNA;
   }
 
-  /**
-   * 切换风格 DNA
-   */
   public setStyle(dna: StyleDNA) {
     this.currentDNA = dna;
   }
 
   /**
-   * 解析表现力并生成指令
-   * @param vector 表现力向量
+   * 执行解析：将表现力向量输入，输出风格化的演奏指令
    */
-  public resolve(vector: ExpressionVector): string {
-    return this.currentDNA.resolveInstruction(vector);
+  public resolve(vector: ExpressionVector): ArticulationInstruction {
+    return this.currentDNA.resolve(vector);
   }
 }
 
