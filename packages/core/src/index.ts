@@ -11,6 +11,7 @@ export * from './engine/synth'
 export * from './engine/quantizer'
 export * from './engine/transformer'
 export * from './engine/recorder'
+export * from './io/json'
 export * from './utils'
 
 export interface RenderedProject {
