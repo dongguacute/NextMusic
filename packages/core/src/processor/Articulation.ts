@@ -34,7 +34,11 @@ export class Articulation {
       const timeDiff = timestamp - lastTimestamp;
       const pitchDiff = Math.abs(currentEvent.payload.pitch.base_note - lastEvent.payload.pitch.base_note);
       
-      if (timeDiff < this.LEGATO_TIME_THRESHOLD && pitchDiff <= this.LEGATO_PITCH_THRESHOLD) {
+      // 核心：检查 stroke_id 是否一致。如果 stroke_id 改变，说明是新的拨弦/按键，可能触发 Legato
+      // 如果 stroke_id 没变，说明是同一个音的持续调制（如推弦），不应触发 Legato 衔接采样
+      const isNewStroke = currentEvent.stroke_id !== lastEvent.stroke_id;
+
+      if (isNewStroke && timeDiff < this.LEGATO_TIME_THRESHOLD && pitchDiff <= this.LEGATO_PITCH_THRESHOLD) {
         type = 'Legato';
         // 权重基于时间间隔，越短权重越高
         weight = 1 - (timeDiff / this.LEGATO_TIME_THRESHOLD);

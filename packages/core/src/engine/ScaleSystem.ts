@@ -57,6 +57,13 @@ export class ScaleSystem {
       return midi;
     }
 
+    // 核心：支持非均分律 (Microtonal) 的保留。
+    // 如果输入包含明显的微音程偏移 (例如推弦 > 15 cents)，则不强制吸附，以保留用户的表达意图。
+    const microOffset = (midi % 1) * 100;
+    if (Math.abs(microOffset) > 15) {
+      return midi;
+    }
+
     const allowedIntervals = this.SCALES[scaleKey];
     
     // 提取八度信息和八度内的音符位置

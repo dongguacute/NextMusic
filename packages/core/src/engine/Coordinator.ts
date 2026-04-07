@@ -38,6 +38,10 @@ export class Coordinator {
       this.styleResolver.setStyle(this.styles[styleName]);
     }
 
+    // 120Hz 高频处理：仅处理最新的事件以降低延迟
+    const latestEvent = input.events[input.events.length - 1];
+    if (!latestEvent) return [];
+
     // 计算表现力向量并解析指令
     const vector = Articulation.calculateExpression(input.events);
     const instruction = this.styleResolver.resolve(vector);
