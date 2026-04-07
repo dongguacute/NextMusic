@@ -121,3 +121,30 @@ export interface ArticulationResult {
 export function validateInputData(data: unknown) {
   return InputDataSchema.safeParse(data);
 }
+
+/**
+ * 手势事件定义
+ */
+export interface GestureEvents {
+  'gesture:update': (payload: {
+    stroke_id: string;
+    current: Event;
+    history: Event[];
+    header: Header | null;
+  }) => void;
+  'gesture:complete': (payload: {
+    stroke_id: string;
+    history: Event[];
+    header: Header | null;
+    expression: ExpressionVector;
+  }) => void;
+}
+
+/**
+ * 简单的 EventEmitter 接口定义，避免 Node.js 依赖报错
+ */
+export interface IGestureAnalyzer {
+  on<K extends keyof GestureEvents>(event: K, listener: GestureEvents[K]): this;
+  off<K extends keyof GestureEvents>(event: K, listener: GestureEvents[K]): this;
+  emit<K extends keyof GestureEvents>(event: K, ...args: Parameters<GestureEvents[K]>): boolean;
+}

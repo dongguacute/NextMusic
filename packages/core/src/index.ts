@@ -3,3 +3,4 @@ export * from './processor/GestureAnalyzer';
 export * from './processor/Articulation';
 export * from './engine/ScaleSystem';
 export * from './library/StreamLoader';
+export * from './engine/Coordinator';

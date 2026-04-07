@@ -1,8 +1,32 @@
-import { InputData, validateInputData, Event, Header, ExpressionVector, Dynamics } from '../types/input';
-import { EventEmitter } from 'events';
+import { InputData, validateInputData, Event, Header, ExpressionVector, Dynamics, IGestureAnalyzer, GestureEvents } from '../types/input';
 import { Articulation } from './Articulation';
 
-class GestureAnalyzer extends EventEmitter {
+/**
+ * 简单的 EventEmitter 实现，避免 Node.js 依赖
+ */
+class SimpleEventEmitter implements IGestureAnalyzer {
+  private listeners: { [key: string]: Function[] } = {};
+
+  on<K extends keyof GestureEvents>(event: K, listener: GestureEvents[K]): this {
+    if (!this.listeners[event]) this.listeners[event] = [];
+    this.listeners[event].push(listener);
+    return this;
+  }
+
+  off<K extends keyof GestureEvents>(event: K, listener: GestureEvents[K]): this {
+    if (!this.listeners[event]) return this;
+    this.listeners[event] = this.listeners[event].filter(l => l !== listener);
+    return this;
+  }
+
+  emit<K extends keyof GestureEvents>(event: K, ...args: Parameters<GestureEvents[K]>): boolean {
+    if (!this.listeners[event]) return false;
+    this.listeners[event].forEach(l => l(...args));
+    return true;
+  }
+}
+
+class GestureAnalyzer extends SimpleEventEmitter {
   private header: Header | null = null;
   private activeStrokes: Map<string, Event[]> = new Map();
 
@@ -64,7 +88,7 @@ class GestureAnalyzer extends EventEmitter {
     const results: ExpressionVector[] = [];
     
     // 监听临时结果
-    const onComplete = (payload: any) => {
+    const onComplete = (payload: Parameters<GestureEvents['gesture:complete']>[0]) => {
       results.push(payload.expression);
     };
     this.on('gesture:complete', onComplete);
