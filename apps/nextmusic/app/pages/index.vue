@@ -145,12 +145,20 @@ const loadPianoSamples = async (ctx: AudioContext) => {
   for (const midi of notes) {
     try {
       const name = midiToName(midi).replace('#', 's');
-      const response = await fetch(`${baseUrl}/${name}.mp3`);
+      const url = `${baseUrl}/${name}.mp3`;
+      console.log(`[Audio] Fetching sample: ${url}`);
+      const response = await fetch(url, {
+        mode: 'cors',
+        credentials: 'omit'
+      });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const arrayBuffer = await response.arrayBuffer();
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
       pianoSamples.value.set(midi, audioBuffer);
+      console.log(`[Audio] Loaded sample for MIDI ${midi}`);
     } catch (e) {
       console.error(`Failed to load sample for MIDI ${midi}`, e);
+      statusText.value = `加载失败: MIDI ${midi}`;
     }
   }
   statusText.value = '钢琴音色加载完成！';
@@ -179,10 +187,31 @@ const getClosestSample = (targetMidi: number) => {
 
 // --- 初始化 ---
 const initAudio = async () => {
-  if (audioCtx) return;
+  if (audioCtx) {
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
+    return;
+  }
   
   try {
     audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    
+    // 立即尝试 resume，以防万一
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
+    
+    // 关键修复：在 iOS 上，某些音频输出可能会被路由到“通话”通道而不是“媒体”通道
+    // 播放一个极短的振荡器声音有时能强制切换通道
+    const osc = audioCtx.createOscillator();
+    const silentGain = audioCtx.createGain();
+    silentGain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+    osc.connect(silentGain);
+    silentGain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.1);
+
     coordinator = new Coordinator();
     
     // 效果链: Sample -> Filter -> Compressor -> Reverb -> MasterGain -> Destination
@@ -214,15 +243,28 @@ const initAudio = async () => {
     
     masterGain.connect(audioCtx.destination);
 
+    // 关键修复：在某些 iOS 版本上，如果 masterGain 的增益值在连接时为 0，
+    // 即使后面通过 setTargetAtTime 修改，也可能由于内部优化导致没有实际输出。
+    // 我们先给一个极小的初始值。
+    masterGain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+
     await loadPianoSamples(audioCtx);
+
+    // 关键修复：在 iOS/iPadOS 上，AudioContext 必须在用户交互回调中显式 resume
+    // 即使已经调用了 resume，有时仍需要一个“静音” Buffer 来解锁音频
+    const buffer = audioCtx.createBuffer(1, 1, 22050);
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioCtx.destination);
+    source.start(0);
+
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
 
     audioStarted.value = true;
     if (statusText.value.includes('加载完成')) {
       statusText.value = '音频就绪，请在屏幕上滑动';
-    }
-    
-    if (audioCtx.state === 'suspended') {
-      await audioCtx.resume();
     }
   } catch (e) {
     console.error('Failed to init audio:', e);
@@ -231,7 +273,21 @@ const initAudio = async () => {
 };
 
 // --- 手势处理 ---
-const handleStart = (e: MouseEvent | Touch) => {
+const handleStart = async (e: MouseEvent | Touch) => {
+  // 关键修复：在 iOS/iPadOS 上，即使 initAudio 已经运行，
+  // 第一次真实的音频播放（或 resume）也必须由用户直接触发。
+  if (audioCtx) {
+    if (audioCtx.state === 'suspended') {
+      await audioCtx.resume();
+    }
+    // 再次尝试播放静音 buffer 以解锁
+    const buffer = audioCtx.createBuffer(1, 1, 22050);
+    const source = audioCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioCtx.destination);
+    source.start(0);
+  }
+
   if (!audioStarted.value) return;
   isPressing.value = true;
   updatePosition(e);
@@ -360,8 +416,14 @@ const updateAudioParameters = () => {
   }
 
   // 能量映射到增益和滤波频率
-  const targetGain = isPressing.value ? currentEnergy.value * 0.8 : 0;
-  masterGain.gain.setTargetAtTime(targetGain, now, 0.1);
+  // 关键修复：在 iOS 上，masterGain.gain.value = 0 有时会触发静音优化。
+  // 我们确保即使在“静音”状态下，也保留一个极小的底噪增益，或者使用更直接的线性变化。
+  const targetGain = isPressing.value ? Math.max(0.0001, currentEnergy.value * 0.8) : 0.0001;
+  
+  // 尝试使用 linearRampToValueAtTime 代替 setTargetAtTime，
+  // 因为某些移动端浏览器对 setTargetAtTime 的指数曲线处理可能存在精度问题。
+  masterGain.gain.cancelScheduledValues(now);
+  masterGain.gain.linearRampToValueAtTime(targetGain, now + 0.05);
   
   const filterFreq = 500 + currentEnergy.value * 8000;
   filter.frequency.setTargetAtTime(filterFreq, now, 0.1);
