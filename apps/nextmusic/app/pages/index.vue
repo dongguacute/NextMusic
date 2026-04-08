@@ -210,7 +210,18 @@ const handleEvent = (e: MouseEvent | Touch, state: 'start' | 'move' | 'end') => 
     }
   } else if (state === 'move') {
     if (!isPressing.value) return;
+    const oldPitch = currentPitch.value;
     updatePosition(e);
+    
+    // 滑动播音逻辑：如果音高跨度超过一个半音，触发新音符
+    if (Math.floor(currentPitch.value) !== Math.floor(oldPitch)) {
+      if (piano && Tone) {
+        const note = Tone.Frequency(currentPitch.value, "midi").toNote();
+        // 释放之前的音符并触发新音符，模拟滑动效果
+        piano.triggerAttack(note, Tone.now(), currentEnergy.value);
+      }
+    }
+
     if (filter && Tone) {
       filter.frequency.setTargetAtTime(500 + currentEnergy.value * 8000, Tone.now(), 0.1);
     }
