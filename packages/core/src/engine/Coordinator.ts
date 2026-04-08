@@ -18,6 +18,31 @@ export class Coordinator {
   }> = new Map();
 
   private styles: Record<string, StyleDNA> = {
+    'Predictive': new ConfigurableStyleDNA('Predictive', (v, ctx) => {
+      const { velocity = 0, pressure = 0.5, isMoving = false, currentPitch = 48 } = ctx || {};
+      
+      // 1. 模糊输入处理：IntentionField 区域感应
+      // 将屏幕划分为 4 个大的感应区 (基于 currentPitch)
+      const zone = Math.floor((currentPitch - 48) / 12); // 每八度一个区
+      const zoneDescription = ['低音共鸣区', '中音旋律区', '高音华彩区', '极高音氛围区'][Math.min(3, Math.max(0, zone))];
+
+      // 2. 单指驱动多声部：和弦映射层
+      // 根据当前 base_note 自动补充和谐的和弦声部 (大三和弦示例)
+      const chords = [currentPitch, currentPitch + 4, currentPitch + 7];
+
+      return {
+        technique: 'predictive_orchestration',
+        intensity: v.energy,
+        timbre_modifiers: ['auto_harmony', 'cinematic_texture'],
+        description: `预测性辅助：${zoneDescription} | 自动和弦补完`,
+        trigger_type: 'predictive_assist',
+        volume: 0.2 + v.energy * 0.8,
+        cutoff: 0.3 + v.energy * 0.6,
+        chords,
+        // @ts-ignore: 从表现力向量中获取平滑建议
+        smoothing: v.smoothing || 0
+      };
+    }),
     'Physical': new ConfigurableStyleDNA('Physical', (v, ctx) => {
       const { velocity = 0, pressure = 0.5, isMoving = false, physic } = ctx || {};
       
@@ -74,15 +99,15 @@ export class Coordinator {
   };
 
   constructor() {
-    // 默认切换为 Physical 物理激励架构
-    this.styleResolver = new StyleResolver(this.styles['Physical']);
+    // 默认切换为 Predictive 预测性辅助演奏
+    this.styleResolver = new StyleResolver(this.styles['Predictive']);
   }
 
   /**
    * 处理输入数据并返回风格化的演奏指令
    */
   public processInput(input: InputData): ArticulationInstruction[] {
-    const styleName = 'Physical'; // 强制物理激励架构
+    const styleName = 'Predictive'; // 强制预测性辅助
     
     if (this.styles[styleName]) {
       this.styleResolver.setStyle(this.styles[styleName]);

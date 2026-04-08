@@ -96,17 +96,8 @@ export class Articulation {
     }
     const instability = Math.min(Math.sqrt(energyVariance) * 2, 1); // 归一化处理
 
-    // 3. 攻击性 (Aggression): 初始速度和压力变化率
-    const firstDynamics = dynamicsList[0];
-    const initialVelocity = firstDynamics.velocity;
-    // 简单的攻击性估算：初始速度 + 压力增长最快的部分
-    let maxPressureDiff = 0;
-    for (let i = 1; i < dynamicsList.length; i++) {
-      maxPressureDiff = Math.max(maxPressureDiff, dynamicsList[i].pressure - dynamicsList[i - 1].pressure);
-    }
-    const aggression = Math.min((initialVelocity / 127) * 0.5 + maxPressureDiff * 0.5, 1);
-
-    // 4. 连贯性 (Coherence): 能量变化的平滑度 (1 - 突变程度)
+    // 3. 动作补偿算法 (Action Compensation / Smoothing)
+    // 如果用户动作僵硬（不连贯），自动计算平滑补偿
     let totalJerk = 0;
     if (count > 1) {
       for (let i = 1; i < dynamicsList.length; i++) {
@@ -114,13 +105,28 @@ export class Articulation {
       }
       totalJerk /= (count - 1);
     }
+    const isStiff = totalJerk > 0.15; // 判定为动作僵硬
+    const smoothing = isStiff ? 200 : 0; // 自动增加 200ms 平滑
+
+    // 4. 攻击性 (Aggression): 初始速度和压力变化率
+    const firstDynamics = dynamicsList[0];
+    const initialVelocity = firstDynamics.velocity;
+    let maxPressureDiff = 0;
+    for (let i = 1; i < dynamicsList.length; i++) {
+      maxPressureDiff = Math.max(maxPressureDiff, dynamicsList[i].pressure - dynamicsList[i - 1].pressure);
+    }
+    const aggression = Math.min((initialVelocity / 127) * 0.5 + maxPressureDiff * 0.5, 1);
+
+    // 5. 连贯性 (Coherence): 能量变化的平滑度 (1 - 突变程度)
     const coherence = Math.max(1 - totalJerk * 2, 0);
 
     return {
       energy: avgEnergy,
       instability,
       aggression,
-      coherence
+      coherence,
+      // @ts-ignore: 扩展表现力向量以包含平滑建议
+      smoothing
     };
   }
 }

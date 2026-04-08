@@ -8,7 +8,7 @@ export interface ArticulationInstruction {
   intensity: number;       // 技法强度 (0-1)
   timbre_modifiers: string[]; // 音色修正指令
   description: string;     // 人类可读的描述 (用于调试或下一级处理)
-  trigger_type?: 'prepare' | 'strike' | 'release' | 'resonance' | 'fluid_sustain' | 'physical_excitation'; // 新增物理激励触发
+  trigger_type?: 'prepare' | 'strike' | 'release' | 'resonance' | 'fluid_sustain' | 'physical_excitation' | 'predictive_assist'; // 新增预测性辅助触发
   release_time?: number; // 释放时间
   cutoff?: number;       // 滤波器截止频率 (0-1)
   volume?: number;       // 实时音量 (0-1)
@@ -22,6 +22,8 @@ export interface ArticulationInstruction {
     frequency: number;
     harmonics: number;
   };
+  chords?: number[];     // 新增：自动生成的和弦声部频率/音符
+  smoothing?: number;    // 新增：动作补偿平滑时间 (ms)
 }
 
 /**

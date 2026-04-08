@@ -211,15 +211,52 @@ const handleExperimentalInput = (data: InputData) => {
   if (!event) return;
   const strokeId = event.stroke_id;
   
-  // 1. 使用 Coordinator 解析物理激励指令
+  // 1. 使用 ScaleSystem 解析频率/音高
+  const freq = scaleSystem.resolveFrequency(event.payload);
+  const note = Tone.Frequency(freq).toNote();
+  
+  // 2. 使用 Coordinator 解析物理激励指令
   const instructions = coordinator.processInput(data);
   const instruction = instructions[0];
 
   if (event.state === 'active') {
     const lastNote = activeNotes.get(strokeId);
     
-    // 检查是否为物理激励触发
-    if (instruction && instruction.trigger_type === 'physical_excitation' && instruction.physics) {
+    // 检查是否为预测性辅助触发
+    if (instruction && instruction.trigger_type === 'predictive_assist') {
+      const { chords = [], smoothing = 0 } = instruction;
+      
+      // 实时更新音量与亮度
+      const volume = Tone.gainToDb(instruction.volume || 0.5);
+      const smoothTime = (smoothing / 1000) || 0.1;
+      piano.volume.setTargetAtTime(volume, Tone.now(), smoothTime);
+      
+      if (filter) {
+        const cutoffFreq = 200 + (instruction.cutoff || 0.5) * 12000;
+        filter.frequency.setTargetAtTime(cutoffFreq, Tone.now(), smoothTime + 0.1);
+      }
+
+      // 自动路径引导：ExperimentalInput 已经处理了捕获逻辑
+      // 这里处理多声部和弦触发
+      const freq = scaleSystem.resolveFrequency(event.payload);
+      const note = Tone.Frequency(freq).toNote();
+      
+      chords.forEach((midi, index) => {
+        const chordNote = Tone.Frequency(midi, "midi").toNote();
+        // 仅在音符改变时触发，避免重复触发
+        const chordKey = `${strokeId}-chord-${index}`;
+        if (activeNotes.get(chordKey) !== chordNote) {
+          // 伴奏声部力度稍轻
+          const velocity = index === 0 ? event.payload.dynamics.energy : event.payload.dynamics.energy * 0.6;
+          piano.triggerAttack(chordNote, Tone.now(), velocity);
+          if (activeNotes.has(chordKey)) {
+            piano.triggerRelease(activeNotes.get(chordKey), Tone.now() + 0.2);
+          }
+          activeNotes.set(chordKey, chordNote);
+        }
+      });
+      activeNotes.set(strokeId, note);
+    } else if (instruction && instruction.trigger_type === 'physical_excitation' && instruction.physics) {
       const { frequency, energy, harmonics } = instruction.physics;
       
       // 实时更新物理弦的声音特性
@@ -259,9 +296,18 @@ const handleExperimentalInput = (data: InputData) => {
   } else if (event.state === 'end') {
     const lastNote = activeNotes.get(strokeId);
     if (lastNote) {
-      // 物理模型下，释放不再是死寂，而是根据阻尼自然衰减
-      piano.triggerRelease(lastNote, Tone.now() + 1.5);
+      // 释放主音符及关联和弦
+      piano.triggerRelease(lastNote, Tone.now() + 0.5);
       activeNotes.delete(strokeId);
+      
+      // 释放和弦声部
+      for (let i = 0; i < 5; i++) {
+        const chordKey = `${strokeId}-chord-${i}`;
+        if (activeNotes.has(chordKey)) {
+          piano.triggerRelease(activeNotes.get(chordKey), Tone.now() + 0.8);
+          activeNotes.delete(chordKey);
+        }
+      }
     }
   }
 };
