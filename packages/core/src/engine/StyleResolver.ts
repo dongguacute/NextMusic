@@ -8,6 +8,20 @@ export interface ArticulationInstruction {
   intensity: number;       // 技法强度 (0-1)
   timbre_modifiers: string[]; // 音色修正指令
   description: string;     // 人类可读的描述 (用于调试或下一级处理)
+  trigger_type?: 'prepare' | 'strike' | 'release' | 'resonance' | 'fluid_sustain' | 'physical_excitation'; // 新增物理激励触发
+  release_time?: number; // 释放时间
+  cutoff?: number;       // 滤波器截止频率 (0-1)
+  volume?: number;       // 实时音量 (0-1)
+  pitch_lerp?: number;   // 音高插值系数 (0-1)
+  physics?: {            // 物理弦模型参数
+    tension: number;
+    damping: number;
+    mass: number;
+    length: number;
+    energy: number;
+    frequency: number;
+    harmonics: number;
+  };
 }
 
 /**
@@ -20,7 +34,7 @@ export interface StyleDNA {
    * 核心映射逻辑：将抽象的表现力向量 (ExpressionVector) 
    * 翻译为具体的演奏指令 (ArticulationInstruction)
    */
-  resolve(vector: ExpressionVector): ArticulationInstruction;
+  resolve(vector: ExpressionVector, context?: any): ArticulationInstruction;
 }
 
 /**
@@ -29,11 +43,11 @@ export interface StyleDNA {
 export class ConfigurableStyleDNA implements StyleDNA {
   constructor(
     public name: string,
-    private rules: (vector: ExpressionVector) => ArticulationInstruction
+    private rules: (vector: ExpressionVector, context?: any) => ArticulationInstruction
   ) {}
 
-  resolve(vector: ExpressionVector): ArticulationInstruction {
-    return this.rules(vector);
+  resolve(vector: ExpressionVector, context?: any): ArticulationInstruction {
+    return this.rules(vector, context);
   }
 }
 
@@ -54,8 +68,8 @@ export class StyleResolver {
   /**
    * 执行解析：将表现力向量输入，输出风格化的演奏指令
    */
-  public resolve(vector: ExpressionVector): ArticulationInstruction {
-    return this.currentDNA.resolve(vector);
+  public resolve(vector: ExpressionVector, context?: any): ArticulationInstruction {
+    return this.currentDNA.resolve(vector, context);
   }
 }
 
