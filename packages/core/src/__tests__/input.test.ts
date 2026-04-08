@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateInputData } from '../types/input';
+import { InputDataSchema } from '../types/input';
 
 describe('Input JSON Validation', () => {
   it('should validate a correct input JSON', () => {
@@ -42,7 +42,7 @@ describe('Input JSON Validation', () => {
       ]
     };
 
-    const result = validateInputData(validData);
+    const result = InputDataSchema.safeParse(validData);
     expect(result.success).toBe(true);
   });
 
@@ -60,7 +60,7 @@ describe('Input JSON Validation', () => {
       "events": []
     };
 
-    const result = validateInputData(invalidData);
+    const result = InputDataSchema.safeParse(invalidData);
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].path).toContain('timestamp');
@@ -76,7 +76,7 @@ describe('Input JSON Validation', () => {
       "events": []
     };
 
-    const result = validateInputData(incompleteData);
+    const result = InputDataSchema.safeParse(incompleteData);
     expect(result.success).toBe(false);
   });
 });

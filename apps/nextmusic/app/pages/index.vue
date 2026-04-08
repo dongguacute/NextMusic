@@ -50,13 +50,13 @@
       ref="touchZone"
       class="flex-1 relative cursor-crosshair active:cursor-none"
       :class="{ 'pointer-events-none opacity-90': isPlayingDemo }"
-      @mousedown="handleStart"
-      @mousemove="handleMove"
-      @mouseup="handleEnd"
-      @mouseleave="handleEnd"
-      @touchstart.prevent="handleTouchStart"
-      @touchmove.prevent="handleTouchMove"
-      @touchend.prevent="handleTouchEnd"
+      @mousedown="handleEvent($event, 'start')"
+      @mousemove="handleEvent($event, 'move')"
+      @mouseup="handleEvent($event, 'end')"
+      @mouseleave="handleEvent($event, 'end')"
+      @touchstart.prevent="handleTouch($event, 'start')"
+      @touchmove.prevent="handleTouch($event, 'move')"
+      @touchend.prevent="handleTouch($event, 'end')"
     >
       <!-- 视觉反馈：波纹/点 -->
       <div 
@@ -90,8 +90,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onUnmounted } from 'vue';
 import { Coordinator, type InputData } from '@netxmusic/core';
+import { PIANO_SAMPLES } from '../assets/config/piano-samples';
 
 // --- 状态变量 ---
 const touchZone = ref<HTMLElement | null>(null);
@@ -106,219 +107,131 @@ const isPlayingDemo = ref(false);
 
 // --- 引擎组件 ---
 let coordinator: Coordinator | null = null;
-let audioCtx: AudioContext | null = null;
-let masterGain: GainNode | null = null;
-let filter: BiquadFilterNode | null = null;
-let reverbNode: ConvolverNode | null = null;
-let compressor: DynamicsCompressorNode | null = null;
+let piano: any = null;
+let filter: any = null;
+let midiPlayer: any = null;
+let Tone: any = null;
 
-// 钢琴音色相关的 AudioBuffer
-const pianoSamples = ref<Map<number, AudioBuffer>>(new Map());
-const activeNodes = new Map<number, AudioBufferSourceNode>();
-
-// 生成简单的混响脉冲响应 (Impulse Response)
-const createReverb = (ctx: AudioContext, duration: number, decay: number) => {
-  const sampleRate = ctx.sampleRate;
-  const length = sampleRate * duration;
-  const impulse = ctx.createBuffer(2, length, sampleRate);
-  for (let i = 0; i < 2; i++) {
-    const channelData = impulse.getChannelData(i);
-    for (let j = 0; j < length; j++) {
-      channelData[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / length, decay);
+// --- 初始化 MIDI Player ---
+const initMidiPlayer = async () => {
+  if (!Tone) return;
+  // @ts-ignore
+  const MidiModule = await import('midi-player-js');
+  // 某些环境下导入的是 { Player: ... }，某些是默认导出
+  const Player = MidiModule.Player || MidiModule.default?.Player || MidiModule.default;
+  
+  midiPlayer = new Player((event: any) => {
+    if (event.name === 'Note on' && event.velocity > 0) {
+      const midi = event.noteNumber;
+      const note = Tone.Frequency(midi, "midi").toNote();
+      
+      isPressing.value = true;
+      
+      // 模拟触控位置映射
+      const rect = touchZone.value?.getBoundingClientRect();
+      if (rect) {
+        const xRatio = (midi - 48) / 36;
+        touchX.value = rect.left + rect.width * xRatio;
+        touchY.value = rect.top + rect.height * 0.4;
+      }
+      
+      currentPitch.value = midi;
+      currentEnergy.value = (event.velocity / 127) * 0.8 + 0.1;
+      
+      // 使用 Tone.js 播放
+      if (piano) {
+        piano.triggerAttack(note, Tone.now(), event.velocity / 127);
+      }
+      
+      processNMEF();
+    } else if (event.name === 'Note off' || (event.name === 'Note on' && event.velocity === 0)) {
+      const midi = event.noteNumber;
+      const note = Tone.Frequency(midi, "midi").toNote();
+      if (piano) {
+        piano.triggerRelease(note, Tone.now());
+      }
     }
-  }
-  return impulse;
+  });
 };
 
-// 加载钢琴采样 (使用公开的钢琴采样 URL 作为演示)
-const loadPianoSamples = async (ctx: AudioContext) => {
-  statusText.value = '正在加载钢琴音色...';
-  // 切换到更优质的采样源
-  const baseUrl = 'https://gleitz.github.io/midi-js-soundfonts/FluidR3_GM/acoustic_grand_piano-mp3';
-  const notes = [24, 36, 48, 60, 72, 84, 96]; // 覆盖更广音域
-  
-  const midiToName = (midi: number) => {
-    const names = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
-    return `${names[midi % 12]}${Math.floor(midi / 12) - 1}`;
-  };
-
-  for (const midi of notes) {
-    try {
-      const name = midiToName(midi).replace('#', 's');
-      const url = `${baseUrl}/${name}.mp3`;
-      console.log(`[Audio] Fetching sample: ${url}`);
-      const response = await fetch(url, {
-        mode: 'cors',
-        credentials: 'omit'
-      });
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const arrayBuffer = await response.arrayBuffer();
-      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-      pianoSamples.value.set(midi, audioBuffer);
-      console.log(`[Audio] Loaded sample for MIDI ${midi}`);
-    } catch (e) {
-      console.error(`Failed to load sample for MIDI ${midi}`, e);
-      statusText.value = `加载失败: MIDI ${midi}`;
-    }
-  }
-  statusText.value = '钢琴音色加载完成！';
-};
-
-// 寻找最近的采样并计算播放速率
-const getClosestSample = (targetMidi: number) => {
-  let closestMidi = -1;
-  let minDiff = Infinity;
-  
-  for (const midi of pianoSamples.value.keys()) {
-    const diff = Math.abs(targetMidi - midi);
-    if (diff < minDiff) {
-      minDiff = diff;
-      closestMidi = midi;
-    }
-  }
-  
-  if (closestMidi === -1) return null;
-  
-  return {
-    buffer: pianoSamples.value.get(closestMidi)!,
-    playbackRate: Math.pow(2, (targetMidi - closestMidi) / 12)
-  };
-};
-
-// --- 初始化 ---
+// --- 初始化 Tone.js ---
 const initAudio = async () => {
-  if (audioCtx) {
-    if (audioCtx.state === 'suspended') {
-      await audioCtx.resume();
-    }
-    return;
-  }
+  if (audioStarted.value) return;
   
-  try {
-    audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    
-    // 立即尝试 resume，以防万一
-    if (audioCtx.state === 'suspended') {
-      await audioCtx.resume();
+  statusText.value = '正在启动 Tone.js...';
+  // @ts-ignore
+  Tone = await import('tone');
+  await Tone.start();
+  console.log('[Audio] Tone.js started, state:', Tone.context.state);
+  
+  coordinator = new Coordinator();
+  
+  // 效果链
+  const reverb = new Tone.Reverb({
+    decay: 3,
+    wet: 0.3
+  }).toDestination();
+  
+  filter = new Tone.Filter({
+    type: "lowpass",
+    frequency: 8000,
+    Q: 0.4
+  }).connect(reverb);
+  
+  // 钢琴音源 (使用 Sampler 加载高质量采样)
+  piano = new Tone.Sampler({
+    ...PIANO_SAMPLES,
+    volume: 12,
+    release: 1,
+    onload: () => {
+      console.log('[Audio] Piano samples loaded successfully');
+      statusText.value = '钢琴音色加载完成！';
+      audioStarted.value = true;
+    },
+    onerror: (err: any) => {
+      console.error('[Audio] Piano samples load error:', err);
+      statusText.value = '采样加载失败，请检查网络';
     }
-    
-    // 关键修复：在 iOS 上，某些音频输出可能会被路由到“通话”通道而不是“媒体”通道
-    // 播放一个极短的振荡器声音有时能强制切换通道
-    const osc = audioCtx.createOscillator();
-    const silentGain = audioCtx.createGain();
-    silentGain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-    osc.connect(silentGain);
-    silentGain.connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.1);
+  }).connect(filter);
 
-    coordinator = new Coordinator();
-    
-    // 效果链: Sample -> Filter -> Compressor -> Reverb -> MasterGain -> Destination
-    masterGain = audioCtx.createGain();
-    masterGain.gain.value = 0;
-    
-    compressor = audioCtx.createDynamicsCompressor();
-    compressor.threshold.setValueAtTime(-24, audioCtx.currentTime);
-    compressor.knee.setValueAtTime(30, audioCtx.currentTime);
-    compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
-    compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
-    compressor.release.setValueAtTime(0.25, audioCtx.currentTime);
-
-    reverbNode = audioCtx.createConvolver();
-    reverbNode.buffer = createReverb(audioCtx, 2.5, 2.0); // 2.5秒混响
-
-    filter = audioCtx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 2000;
-    filter.Q.value = 0.7;
-
-    // 连接节点
-    filter.connect(compressor);
-    compressor.connect(reverbNode);
-    reverbNode.connect(masterGain);
-    
-    // 干湿分离 (Parallel Processing for Reverb)
-    compressor.connect(masterGain); 
-    
-    masterGain.connect(audioCtx.destination);
-
-    // 关键修复：在某些 iOS 版本上，如果 masterGain 的增益值在连接时为 0，
-    // 即使后面通过 setTargetAtTime 修改，也可能由于内部优化导致没有实际输出。
-    // 我们先给一个极小的初始值。
-    masterGain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
-
-    await loadPianoSamples(audioCtx);
-
-    // 关键修复：在 iOS/iPadOS 上，AudioContext 必须在用户交互回调中显式 resume
-    // 即使已经调用了 resume，有时仍需要一个“静音” Buffer 来解锁音频
-    const buffer = audioCtx.createBuffer(1, 1, 22050);
-    const source = audioCtx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(audioCtx.destination);
-    source.start(0);
-
-    if (audioCtx.state === 'suspended') {
-      await audioCtx.resume();
-    }
-
-    audioStarted.value = true;
-    if (statusText.value.includes('加载完成')) {
-      statusText.value = '音频就绪，请在屏幕上滑动';
-    }
-  } catch (e) {
-    console.error('Failed to init audio:', e);
-    statusText.value = '音频初始化失败';
-  }
+  statusText.value = '正在加载钢琴采样...';
 };
 
 // --- 手势处理 ---
-const handleStart = async (e: MouseEvent | Touch) => {
-  // 关键修复：在 iOS/iPadOS 上，即使 initAudio 已经运行，
-  // 第一次真实的音频播放（或 resume）也必须由用户直接触发。
-  if (audioCtx) {
-    if (audioCtx.state === 'suspended') {
-      await audioCtx.resume();
-    }
-    // 再次尝试播放静音 buffer 以解锁
-    const buffer = audioCtx.createBuffer(1, 1, 22050);
-    const source = audioCtx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(audioCtx.destination);
-    source.start(0);
-  }
-
+const handleEvent = (e: MouseEvent | Touch, state: 'start' | 'move' | 'end') => {
   if (!audioStarted.value) return;
-  isPressing.value = true;
-  updatePosition(e);
-  processNMEF();
-};
 
-const handleMove = (e: MouseEvent | Touch) => {
-  if (!isPressing.value) return;
-  updatePosition(e);
-  processNMEF();
-};
-
-const handleEnd = () => {
-  isPressing.value = false;
-  if (masterGain && audioCtx) {
-    masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.2);
+  if (state === 'start') {
+    isPressing.value = true;
+    updatePosition(e);
+    if (piano && Tone) {
+      const note = Tone.Frequency(currentPitch.value, "midi").toNote();
+      piano.triggerAttack(note, Tone.now(), currentEnergy.value);
+    }
+  } else if (state === 'move') {
+    if (!isPressing.value) return;
+    updatePosition(e);
+    if (filter && Tone) {
+      filter.frequency.setTargetAtTime(500 + currentEnergy.value * 8000, Tone.now(), 0.1);
+    }
+  } else if (state === 'end') {
+    isPressing.value = false;
+    if (piano && Tone) {
+      piano.releaseAll();
+    }
+    return; // End doesn't need processNMEF here as it's handled inside or by next start
   }
-  // 停止所有正在播放的源
-  activeNodes.forEach(node => {
-    try { node.stop(audioCtx!.currentTime + 0.5); } catch(e) {}
-  });
-  activeNodes.clear();
+  
+  processNMEF();
 };
 
-const handleTouchStart = (e: TouchEvent) => {
-  if (e.touches[0]) handleStart(e.touches[0]);
+const handleTouch = (e: TouchEvent, state: 'start' | 'move' | 'end') => {
+  if (state === 'end') {
+    handleEvent({} as any, 'end');
+  } else if (e.touches[0]) {
+    handleEvent(e.touches[0], state);
+  }
 };
-const handleTouchMove = (e: TouchEvent) => {
-  if (e.touches[0]) handleMove(e.touches[0]);
-};
-const handleTouchEnd = () => handleEnd();
 
 const updatePosition = (e: MouseEvent | Touch) => {
   touchX.value = e.clientX;
@@ -329,15 +242,14 @@ const updatePosition = (e: MouseEvent | Touch) => {
     const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
     
-    // 映射：X -> Pitch (MIDI 48-84), Y -> Energy (1.0 - 0.0)
     currentPitch.value = 48 + x * 36;
     currentEnergy.value = 1.0 - y;
   }
 };
 
-// --- 核心逻辑：生成 NMEF 并驱动 Coordinator ---
+// --- 核心逻辑 ---
 const processNMEF = () => {
-  if (!coordinator || !audioCtx) return;
+  if (!coordinator) return;
 
   const nmefData: InputData = {
     header: {
@@ -370,115 +282,41 @@ const processNMEF = () => {
     }]
   };
 
-  // 驱动 Coordinator
   const instructions = coordinator.processInput(nmefData);
   if (instructions && instructions.length > 0 && instructions[0]) {
     statusText.value = `技法: ${instructions[0].technique}`;
   }
-
-  // 更新声音
-  updateAudioParameters();
-};
-
-const updateAudioParameters = () => {
-  if (!audioCtx || !masterGain || !filter) return;
-
-  const now = audioCtx.currentTime;
-  
-  // 钢琴采样播放逻辑
-  const sampleInfo = getClosestSample(currentPitch.value);
-  if (sampleInfo && isPressing.value) {
-    // 如果音高变化较大或没有正在播放的源，启动新源 (模拟简单的连奏)
-    const currentMidiInt = Math.round(currentPitch.value);
-    if (!activeNodes.has(currentMidiInt)) {
-      // 停止旧的源
-      activeNodes.forEach((node, midi) => {
-        if (Math.abs(midi - currentMidiInt) > 2) {
-          node.stop(now + 0.1);
-          activeNodes.delete(midi);
-        }
-      });
-
-      const source = audioCtx.createBufferSource();
-      source.buffer = sampleInfo.buffer;
-      source.playbackRate.value = sampleInfo.playbackRate;
-      source.loop = true; // 钢琴通常不循环，但为了持续发声这里开启循环
-      source.connect(filter);
-      source.start(now);
-      activeNodes.set(currentMidiInt, source);
-    } else {
-      // 更新现有源的播放速率
-      const node = activeNodes.get(currentMidiInt);
-      if (node) {
-        node.playbackRate.setTargetAtTime(sampleInfo.playbackRate, now, 0.05);
-      }
-    }
-  }
-
-  // 能量映射到增益和滤波频率
-  // 关键修复：在 iOS 上，masterGain.gain.value = 0 有时会触发静音优化。
-  // 我们确保即使在“静音”状态下，也保留一个极小的底噪增益，或者使用更直接的线性变化。
-  const targetGain = isPressing.value ? Math.max(0.0001, currentEnergy.value * 0.8) : 0.0001;
-  
-  // 尝试使用 linearRampToValueAtTime 代替 setTargetAtTime，
-  // 因为某些移动端浏览器对 setTargetAtTime 的指数曲线处理可能存在精度问题。
-  masterGain.gain.cancelScheduledValues(now);
-  masterGain.gain.linearRampToValueAtTime(targetGain, now + 0.05);
-  
-  const filterFreq = 500 + currentEnergy.value * 8000;
-  filter.frequency.setTargetAtTime(filterFreq, now, 0.1);
 };
 
 // --- 自动演奏 (Demo) ---
-let demoInterval: any = null;
-const playDemo = () => {
-  if (!audioCtx || isPlayingDemo.value) return;
+const playDemo = async () => {
+  if (!audioStarted.value || isPlayingDemo.value) return;
+  
+  // 确保 Tone.js 上下文已恢复
+  if (Tone && Tone.context.state !== 'running') {
+    await Tone.start();
+  }
   
   isPlayingDemo.value = true;
-  statusText.value = '正在自动演奏：巴赫 - G大调前奏曲 (片段)';
+  statusText.value = '正在从 MIDI 文件自动演奏：华晨宇 - 好想爱这个世界啊';
   
-  // 简化的巴赫前奏曲音符序列 (MIDI)
-  const bachNotes = [
-    67, 62, 71, 69, 71, 62, 71, 62, // 第一小节
-    67, 62, 71, 69, 71, 62, 71, 62,
-    67, 64, 72, 71, 72, 64, 72, 64, // 第二小节
-    67, 64, 72, 71, 72, 64, 72, 64,
-    67, 65, 74, 72, 74, 65, 74, 65, // 第三小节
-    67, 65, 74, 72, 74, 65, 74, 65,
-    67, 62, 71, 69, 71, 62, 71, 62, // 回到根音
-    67, 62, 71, 69, 71, 62, 71, 62
-  ];
-  
-  let noteIndex = 0;
-  const tempo = 150; // 毫秒/音符
-  
-  isPressing.value = true;
-  
-  demoInterval = setInterval(() => {
-    const midi = bachNotes[noteIndex];
-    if (midi === undefined) return;
+  try {
+    if (!midiPlayer) await initMidiPlayer();
     
-    // 模拟触控位置映射
-    const rect = touchZone.value?.getBoundingClientRect();
-    if (rect) {
-      const xRatio = (midi - 48) / 36;
-      touchX.value = rect.left + rect.width * xRatio;
-      touchY.value = rect.top + rect.height * 0.3; // 固定在 0.7 能量处
-    }
-    
-    currentPitch.value = midi;
-    currentEnergy.value = 0.7 + Math.random() * 0.2; // 增加一点动态随机感
-    
-    processNMEF();
-    
-    noteIndex = (noteIndex + 1) % bachNotes.length;
-  }, tempo);
+    const response = await fetch('/music/song.mid');
+    const arrayBuffer = await response.arrayBuffer();
+    midiPlayer.loadArrayBuffer(arrayBuffer);
+    midiPlayer.play();
+  } catch (e) {
+    console.error('Failed to play MIDI:', e);
+    statusText.value = 'MIDI 播放失败';
+    isPlayingDemo.value = false;
+  }
 };
 
 const stopDemo = () => {
-  if (demoInterval) {
-    clearInterval(demoInterval);
-    demoInterval = null;
+  if (midiPlayer) {
+    midiPlayer.stop();
   }
   isPlayingDemo.value = false;
   handleEnd();
@@ -487,8 +325,8 @@ const stopDemo = () => {
 
 onUnmounted(() => {
   stopDemo();
-  if (audioCtx) {
-    audioCtx.close();
+  if (Tone) {
+    Tone.getDestination().mute = true;
   }
 });
 </script>

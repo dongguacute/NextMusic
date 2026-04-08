@@ -2,6 +2,11 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: false },
+  vite: {
+    define: {
+      '__VUE_PROD_DEVTOOLS__': false,
+    }
+  },
   devServer: {
     host: '0.0.0.0'
   },
@@ -11,7 +16,6 @@ export default defineNuxtConfig({
   css: ['./app/assets/css/main.css'],
   modules: [
     '@nuxtjs/tailwindcss',
-    '@pinia/nuxt',
     '@nuxt/icon'
   ],
 })

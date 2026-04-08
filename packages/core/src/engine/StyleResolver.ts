@@ -1,5 +1,4 @@
 import { ExpressionVector } from '../types/input';
-import GestureAnalyzer from '../processor/GestureAnalyzer';
 
 /**
  * 演奏参数映射，定义了表现力向量如何转化为具体的合成器/效果器参数
@@ -13,7 +12,7 @@ export interface ArticulationInstruction {
 
 /**
  * StyleDNA 定义了不同音乐风格的“表现力翻译规则”
- * 它是风格的灵魂，决定了同样的输入能量在不同风格下如何转化为不同的演奏技法
+ * 它是风格的灵魂，决定了同样的输入能量在不同风格下如何转化为具体的演奏技法
  */
 export interface StyleDNA {
   name: string;
@@ -42,11 +41,9 @@ export class ConfigurableStyleDNA implements StyleDNA {
  * StyleResolver 负责持有并应用当前的 StyleDNA
  */
 export class StyleResolver {
-  private gestureAnalyzer: GestureAnalyzer;
   private currentDNA: StyleDNA;
 
   constructor(initialDNA: StyleDNA) {
-    this.gestureAnalyzer = new GestureAnalyzer();
     this.currentDNA = initialDNA;
   }
 
