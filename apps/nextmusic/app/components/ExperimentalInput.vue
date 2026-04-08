@@ -57,11 +57,11 @@ interface Stream {
   prevY: number;
   pressure: number;
   energy: number;
+  friction_energy: number;
   active: boolean;
   isExternal?: boolean; // 标记是否为外部 Demo 事件
   pullX?: number; // 被拉扯后的位置
   pullY?: number;
-  velocity: number; // 瞬时速度
   inertiaX: number; // 惯性分量
   inertiaY: number;
   lastMoveTime: number;
@@ -179,9 +179,9 @@ watch(() => props.externalEvents, (newData) => {
       prevY: event.payload.spatial.y_axis,
       pressure: event.payload.dynamics.pressure,
       energy: event.payload.dynamics.energy,
+      friction_energy: (event.payload.dynamics as any).friction_energy || 0,
       active: true,
       isExternal: true,
-      velocity: event.payload.dynamics.velocity,
       inertiaX: 0,
       inertiaY: 0,
       lastMoveTime: performance.now()
@@ -248,8 +248,8 @@ const handlePointerDown = (e: PointerEvent) => {
     pullY: y,
     pressure: e.pressure || 0.5,
     energy: 0, // 初始能量为0，没有位移就没有声音
+    friction_energy: 0,
     active: true,
-    velocity: 0,
     inertiaX: 0,
     inertiaY: 0,
     lastMoveTime: performance.now()
@@ -281,10 +281,18 @@ const handlePointerMove = (e: PointerEvent) => {
   const dy = currentPullY - (stream.pullY || currentPullY);
   const distanceMoved = Math.sqrt(dx * dx + dy * dy);
   
-  // 动能映射：1/2 * m * v^2，这里简化为 v^2
+  // 摩擦能量计算：F = Pressure * Movement_Speed
   const velocity = distanceMoved / (dt / 1000); // 单位：屏幕占比/秒
-  const kineticEnergy = 0.5 * Math.pow(velocity, 2);
+  const instantaneousFriction = stream.pressure * velocity;
   
+  // EMA 平滑处理 (Alpha = 0.2)
+  stream.friction_energy = (0.2 * instantaneousFriction) + (0.8 * stream.friction_energy);
+  
+  // 模拟弓停声消：如果手指不动，能量快速衰减
+  if (distanceMoved < 0.0001) {
+    stream.friction_energy *= 0.85;
+  }
+
   // 吸引子逻辑
   const { distance, nx, ny } = getClosestPointOnPath(mouseX, mouseY);
   const normalizedDist = distance / Math.max(rect.width, rect.height);
@@ -297,12 +305,10 @@ const handlePointerMove = (e: PointerEvent) => {
   stream.y = ny / rect.height;
   stream.pullX = currentPullX;
   stream.pullY = currentPullY;
-  stream.velocity = velocity;
   stream.lastMoveTime = now;
   
   // 能量守恒：能量随位移产生，随时间衰减
-  // 只有位移足够大时才产生显著能量
-  stream.energy = Math.min(1, kineticEnergy * 10 + (stream.energy * 0.8));
+  stream.energy = Math.min(1, stream.friction_energy);
   
   stream.pressure = e.pressure || 0.5;
 
@@ -347,8 +353,8 @@ const createParticles = (stream: Stream) => {
 
 const sendStreamData = (stream: Stream, state: 'active' | 'end', tension: number = 0) => {
   // 惯性音高漂移 (Pitch Drift)
-  // 当速度降低或停止时，根据惯性产生微小的偏移
-  const drift = stream.velocity < 0.1 ? (stream.inertiaX * 50) : 0;
+  // 当能量降低或停止时，根据惯性产生微小的偏移
+  const drift = stream.friction_energy < 0.1 ? (stream.inertiaX * 50) : 0;
   
   const nonlinearX = Math.pow(stream.x, 1.2); 
   
@@ -373,10 +379,10 @@ const sendStreamData = (stream: Stream, state: 'active' | 'end', tension: number
           is_gliding: true 
         },
         dynamics: {
-          // 核心：使用基于动能计算的 energy
+          // 核心：使用基于摩擦能量计算的 energy
           energy: stream.energy,
           pressure: stream.pressure,
-          velocity: stream.velocity * 100
+          friction_energy: stream.friction_energy
         },
         spatial: {
           x_axis: stream.x,
@@ -384,8 +390,8 @@ const sendStreamData = (stream: Stream, state: 'active' | 'end', tension: number
           area: stream.pressure
         },
         intent: {
-          // 张力与速度共同决定表现力
-          staccato_weight: Math.min(1, tension * 2 + stream.velocity * 0.5),
+          // 张力与能量共同决定表现力
+          staccato_weight: Math.min(1, tension * 2 + stream.friction_energy * 0.5),
           vibrato_depth: stream.pressure * 0.3 + (tension * 0.5)
         }
       }
@@ -475,20 +481,25 @@ const render = () => {
     ctx!.stroke();
     ctx!.setLineDash([]);
 
-    // 核心光晕
-    const gradient = ctx!.createRadialGradient(px, py, 0, px, py, 50 * stream.pressure);
-    // Demo 播放使用紫色调，用户输入使用蓝色调
-    const color = stream.isExternal ? '167, 139, 250' : '59, 130, 246';
-    gradient.addColorStop(0, `rgba(${color}, ${0.4 * stream.pressure})`);
-    gradient.addColorStop(1, `rgba(${color}, 0)`);
+    // 核心光晕：力度越大，光晕越烫（蓝变红），线条越粗
+    const energy = stream.energy;
+    const glowSize = 50 * stream.pressure * (1 + energy);
+    const gradient = ctx!.createRadialGradient(px, py, 0, px, py, glowSize);
+    
+    // 颜色映射：从蓝色 (200) 到红色 (0)
+    const hue = Math.max(0, 200 - energy * 200);
+    const color = `hsla(${hue}, 80%, 60%, ${0.4 * stream.pressure})`;
+    
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(1, `rgba(0, 0, 0, 0)`);
     
     ctx!.fillStyle = gradient;
-    ctx!.fillRect(px - 100, py - 100, 200, 200);
+    ctx!.fillRect(px - glowSize * 2, py - glowSize * 2, glowSize * 4, glowSize * 4);
 
-    // 交互点（手指位置）
+    // 交互点（手指位置）：能量越高，颜色越“烫”
     ctx!.beginPath();
-    ctx!.arc(px, py, 6, 0, Math.PI * 2);
-    ctx!.fillStyle = stream.isExternal ? '#f5d0fe' : '#fff';
+    ctx!.arc(px, py, 6 + energy * 4, 0, Math.PI * 2);
+    ctx!.fillStyle = `hsla(${hue}, 100%, 80%, 1)`;
     ctx!.fill();
 
     // 锚点（线上吸附位置）

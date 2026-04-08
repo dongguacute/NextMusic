@@ -8,7 +8,7 @@ export class Articulation {
   // 阈值配置
   private static readonly LEGATO_TIME_THRESHOLD = 50; // 毫秒，判定为连奏的时间间隔
   private static readonly ATTACK_ENERGY_THRESHOLD = 0.8; // 能量阈值，判定为重击
-  private static readonly ATTACK_VELOCITY_THRESHOLD = 100; // 速度阈值
+  private static readonly ATTACK_FRICTION_THRESHOLD = 0.5; // 摩擦能量阈值
   private static readonly LEGATO_PITCH_THRESHOLD = 12; // 半音，判定为连奏的音程间隔 (一个八度内)
 
   /**
@@ -51,12 +51,12 @@ export class Articulation {
     // 逻辑：如果用户有一个瞬时的高能量输入，它会触发 Attack（重击）切片
     const currentDynamics = currentEvent.payload.dynamics;
     if (currentDynamics.energy > this.ATTACK_ENERGY_THRESHOLD || 
-        currentDynamics.velocity > this.ATTACK_VELOCITY_THRESHOLD) {
+        currentDynamics.friction_energy > this.ATTACK_FRICTION_THRESHOLD) {
       type = 'Attack';
-      // 权重基于能量或速度的溢出程度
+      // 权重基于能量或摩擦能量的溢出程度
       const energyWeight = Math.max(0, (currentDynamics.energy - this.ATTACK_ENERGY_THRESHOLD) / (1 - this.ATTACK_ENERGY_THRESHOLD));
-      const velocityWeight = Math.max(0, (currentDynamics.velocity - this.ATTACK_VELOCITY_THRESHOLD) / (127 - this.ATTACK_VELOCITY_THRESHOLD));
-      weight = Math.max(energyWeight, velocityWeight);
+      const frictionWeight = Math.max(0, (currentDynamics.friction_energy - this.ATTACK_FRICTION_THRESHOLD) / (1 - this.ATTACK_FRICTION_THRESHOLD));
+      weight = Math.max(energyWeight, frictionWeight);
 
       return { expression, type, weight };
     }
@@ -108,14 +108,14 @@ export class Articulation {
     const isStiff = totalJerk > 0.15; // 判定为动作僵硬
     const smoothing = isStiff ? 200 : 0; // 自动增加 200ms 平滑
 
-    // 4. 攻击性 (Aggression): 初始速度和压力变化率
+    // 4. 攻击性 (Aggression): 初始摩擦能量和压力变化率
     const firstDynamics = dynamicsList[0];
-    const initialVelocity = firstDynamics.velocity;
+    const initialFriction = firstDynamics.friction_energy;
     let maxPressureDiff = 0;
     for (let i = 1; i < dynamicsList.length; i++) {
       maxPressureDiff = Math.max(maxPressureDiff, dynamicsList[i].pressure - dynamicsList[i - 1].pressure);
     }
-    const aggression = Math.min((initialVelocity / 127) * 0.5 + maxPressureDiff * 0.5, 1);
+    const aggression = Math.min(initialFriction * 0.5 + maxPressureDiff * 0.5, 1);
 
     // 5. 连贯性 (Coherence): 能量变化的平滑度 (1 - 突变程度)
     const coherence = Math.max(1 - totalJerk * 2, 0);

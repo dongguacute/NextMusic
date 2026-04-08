@@ -33,7 +33,7 @@ export const PitchSchema = z.object({
 export const DynamicsSchema = z.object({
   energy: z.number().min(0).max(1).describe('总体能量强度 (0-1)'),
   pressure: z.number().min(0).max(1).describe('压力感应 (0-1)'),
-  velocity: z.number().describe('瞬时速度'),
+  friction_energy: z.number().describe('摩擦能量 (Pressure * Movement_Speed)'),
 });
 
 /**

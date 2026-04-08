@@ -19,7 +19,7 @@ export class Coordinator {
 
   private styles: Record<string, StyleDNA> = {
     'Predictive': new ConfigurableStyleDNA('Predictive', (v, ctx) => {
-      const { velocity = 0, pressure = 0.5, isMoving = false, currentPitch = 48 } = ctx || {};
+      const { friction_energy = 0, pressure = 0.5, isMoving = false, currentPitch = 48 } = ctx || {};
       
       // 1. 模糊输入处理：IntentionField 区域感应
       // 将屏幕划分为 4 个大的感应区 (基于 currentPitch)
@@ -44,14 +44,14 @@ export class Coordinator {
       };
     }),
     'Physical': new ConfigurableStyleDNA('Physical', (v, ctx) => {
-      const { velocity = 0, pressure = 0.5, isMoving = false, physic } = ctx || {};
+      const { friction_energy = 0, pressure = 0.5, isMoving = false, physic } = ctx || {};
       
       if (!physic) return { technique: 'none', intensity: 0, timbre_modifiers: [], description: '未初始化物理实体' };
 
       // 1. 物理激励 (Excitation)
-      // 将 NMEF velocity 和 pressure 转化为能量输入
+      // 将 NMEF friction_energy 和 pressure 转化为能量输入
       if (isMoving) {
-        physic.excite(velocity, pressure);
+        physic.excite(friction_energy, pressure);
       }
 
       // 2. 物理状态演进 (Step)
@@ -88,11 +88,11 @@ export class Coordinator {
     }),
     'Fluid': new ConfigurableStyleDNA('Fluid', (v, ctx) => {
       // ... 保持原有流体逻辑 ...
-      const { velocity = 0, pressure = 0.5 } = ctx || {};
+      const { friction_energy = 0, pressure = 0.5 } = ctx || {};
       const baseVolume = 0.05;
-      const dynamicVolume = Math.min(0.95, velocity * 2.0);
+      const dynamicVolume = Math.min(0.95, friction_energy * 2.0);
       const volume = baseVolume + dynamicVolume;
-      const cutoff = 0.2 + Math.min(0.8, velocity * 3.0);
+      const cutoff = 0.2 + Math.min(0.8, friction_energy * 3.0);
       return { technique: 'cello_fluid_sustain', intensity: v.energy, timbre_modifiers: ['soft_bowing'], description: `流体驱动`, trigger_type: 'fluid_sustain', volume, cutoff, pitch_lerp: 0.15, release_time: 1.5 };
     }),
     // ... 其他风格 ...
@@ -120,8 +120,8 @@ export class Coordinator {
     const history = input.events.filter(e => e.stroke_id === strokeId);
     
     // 计算物理参数
-    const velocity = latestEvent.payload.dynamics.velocity;
-    const isMoving = velocity > 0.005;
+    const frictionEnergy = latestEvent.payload.dynamics.friction_energy;
+    const isMoving = frictionEnergy > 0.005;
 
     // 维护触发状态与物理实体
     if (!this.strokeStates.has(strokeId)) {
@@ -146,7 +146,7 @@ export class Coordinator {
     // 计算表现力向量并解析指令
     const vector = Articulation.calculateExpression(history);
     const instruction = this.styleResolver.resolve(vector, {
-      velocity,
+      friction_energy: frictionEnergy,
       isMoving,
       pressure: latestEvent.payload.dynamics.pressure,
       state: latestEvent.state,

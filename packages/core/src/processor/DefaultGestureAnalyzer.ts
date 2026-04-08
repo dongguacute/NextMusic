@@ -1,5 +1,6 @@
 import { InputData, Event, Header, IGestureAnalyzer, GestureEvents } from '../types/input';
 import { Articulation } from './Articulation';
+import { FrictionAnalyzer } from './FrictionAnalyzer';
 
 /**
  * 简单的 EventEmitter 实现，避免 Node.js 依赖
@@ -33,6 +34,8 @@ export class SimpleEventEmitter implements IGestureAnalyzer {
 export class DefaultGestureAnalyzer extends SimpleEventEmitter {
   private header: Header | null = null;
   private activeStrokes: Map<string, Event[]> = new Map();
+  private frictionAnalyzers: Map<string, FrictionAnalyzer> = new Map();
+  private lastTimestamps: Map<string, number> = new Map();
 
   constructor(initialHeader?: Header) {
     super();
@@ -91,7 +94,7 @@ export class DefaultGestureAnalyzer extends SimpleEventEmitter {
         dynamics: {
           energy: energy,
           pressure: pressure,
-          velocity: 100 // 默认值
+          friction_energy: 0 // 初始值，稍后更新
         },
         spatial: {
           x_axis: x,
@@ -120,6 +123,24 @@ export class DefaultGestureAnalyzer extends SimpleEventEmitter {
     }
 
     const history = this.activeStrokes.get(stroke_id)!;
+    
+    // 计算摩擦能量
+    if (!this.frictionAnalyzers.has(stroke_id)) {
+      this.frictionAnalyzers.set(stroke_id, new FrictionAnalyzer());
+      this.lastTimestamps.set(stroke_id, Date.now());
+    }
+    
+    const analyzer = this.frictionAnalyzers.get(stroke_id)!;
+    const lastTime = this.lastTimestamps.get(stroke_id) || Date.now();
+    const currentTime = Date.now();
+    const deltaTime = currentTime - lastTime;
+    
+    const frictionEnergy = analyzer.calculate(event, deltaTime);
+    event.payload.dynamics.friction_energy = frictionEnergy;
+    // 同时更新总体能量，使其反映摩擦能量
+    event.payload.dynamics.energy = Math.min(1, frictionEnergy); 
+
+    this.lastTimestamps.set(stroke_id, currentTime);
     history.push(event);
 
     // 触发实时分析事件
@@ -140,6 +161,8 @@ export class DefaultGestureAnalyzer extends SimpleEventEmitter {
         expression
       });
       this.activeStrokes.delete(stroke_id);
+      this.frictionAnalyzers.delete(stroke_id);
+      this.lastTimestamps.delete(stroke_id);
     }
   }
 }
