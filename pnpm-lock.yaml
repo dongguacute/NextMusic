@@ -70,6 +70,9 @@ importers:
 
   packages/core:
     dependencies:
+      idb:
+        specifier: ^8.0.3
+        version: 8.0.3
       zod:
         specifier: ^4.3.6
         version: 4.3.6
@@ -2980,6 +2983,9 @@ packages:
   human-signals@5.0.0:
     resolution: {integrity: sha512-AXcZb6vzzrFAUE61HnN4mpLqd/cSIwNQjtNWR0euPm6y0iqx3G4gOXaIDdtdDwZmhwe82LA6+zinmW4UBWVePQ==}
     engines: {node: '>=16.17.0'}
+
+  idb@8.0.3:
+    resolution: {integrity: sha512-LtwtVyVYO5BqRvcsKuB2iUMnHwPVByPCXFXOpuU96IZPPoPN6xjOGxZQ74pgSVVLQWtUOYgyeL4GE98BY5D3wg==}
 
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
@@ -8079,6 +8085,8 @@ snapshots:
   httpxy@0.5.0: {}
 
   human-signals@5.0.0: {}
+
+  idb@8.0.3: {}
 
   ieee754@1.2.1: {}
 

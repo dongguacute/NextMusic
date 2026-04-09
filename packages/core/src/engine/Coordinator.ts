@@ -1,5 +1,6 @@
 import { InputData } from '../types/Header';
 import { Frame } from '../types/Frame_Stream';
+import { StreamLoader } from '../library/StreamLoader';
 
 /**
  * 输出协议：渲染指令
@@ -29,10 +30,12 @@ export class Coordinator {
   private config: CoordinatorConfig;
   private currentPitch: number = 0;
   private isFirstFrame: boolean = true;
+  private loader: StreamLoader | null = null;
   
   constructor(
     private inputHeader: InputData,
-    config?: Partial<CoordinatorConfig>
+    config?: Partial<CoordinatorConfig>,
+    loader?: StreamLoader
   ) {
     this.config = {
       pitch_smoothing: 0.15, // 默认平滑系数
@@ -41,6 +44,7 @@ export class Coordinator {
       layer_thresholds: [0.33, 0.66], // 默认三层均匀分布
       ...config
     };
+    this.loader = loader || null;
   }
 
   /**
@@ -48,6 +52,8 @@ export class Coordinator {
    * @param frame 当前帧数据
    */
   public process(frame: Frame): RenderCommand {
+    const oldPitch = this.currentPitch;
+
     // 1. 实现“滞后跟踪” (Lerp)
     // 处理初始帧，避免从 0 开始平滑导致的“滑入”感
     if (this.isFirstFrame) {
@@ -56,6 +62,12 @@ export class Coordinator {
     } else {
       // 当输入的 pitch 剧烈波动时，输出的音高应该平滑追踪，产生类似真实弦乐的滑动感
       this.currentPitch = this.lerp(this.currentPitch, frame.pitch.hz, this.config.pitch_smoothing);
+    }
+
+    // 发送预判信号给 Loader
+    if (this.loader && Math.abs(this.currentPitch - oldPitch) > 10) {
+      const direction = this.currentPitch > oldPitch ? 1 : -1;
+      this.loader.onCoordinatorSignal(this.currentPitch, direction, []);
     }
 
     // 2. 多层混合计算 (Gain 分布)
